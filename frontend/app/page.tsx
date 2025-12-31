@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import UploadDropzone, { UploadState } from "../components/UploadDropzone";
-import { SessionPayload, UploadResponse, createSession, listSessions, uploadVideo } from "../lib/api";
+import { SessionPayload, UploadResponse, createSession, listGames, listSessions, uploadVideo } from "../lib/api";
 
 interface SessionSummary {
   id: string;
@@ -14,15 +14,20 @@ interface SessionSummary {
 
 export default function StartScreen() {
   const router = useRouter();
-  const [mode, setMode] = useState<"file" | "rtsp">("file");
+  const [mode, setMode] = useState<"file" | "rtsp" | "event_log">("event_log");
   const [rtspUrl, setRtspUrl] = useState("");
   const [fps, setFps] = useState(25);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [uploadState, setUploadState] = useState<UploadState>("IDLE");
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [games, setGames] = useState<{ game_id: string; home_team?: string; away_team?: string; match_date?: string }[]>([]);
+  const [selectedGame, setSelectedGame] = useState<string>("");
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(5);
+  const [gameLoadError, setGameLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     refreshSessions();
+    preloadGames();
   }, []);
 
   const refreshSessions = async () => {
@@ -31,6 +36,18 @@ export default function StartScreen() {
       setSessions(data.sessions || []);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const preloadGames = async () => {
+    try {
+      const res = await listGames();
+      setGames(res.games || []);
+      if (res.games && res.games.length > 0) {
+        setSelectedGame(res.games[0].game_id);
+      }
+    } catch (err: any) {
+      setGameLoadError(err?.message || "Track2 game 목록을 불러오지 못했습니다");
     }
   };
 
@@ -58,11 +75,54 @@ export default function StartScreen() {
     await createSessionAndGo({ source_type: "rtsp", mode: "live", rtsp_url: rtspUrl, fps });
   };
 
+  const handleCreateEventLog = async () => {
+    if (!selectedGame) return;
+    await createSessionAndGo({
+      source_type: "event_log",
+      mode: "offline_realtime",
+      game_id: selectedGame,
+      playback_speed: playbackSpeed,
+    });
+  };
+
   return (
     <main className="page">
       <section className="card">
         <h1>입력 소스 선택</h1>
         <div className="card-grid">
+          <div className="card-inner">
+            <div className="card-head">
+              <label>
+                <input type="radio" name="mode" checked={mode === "event_log"} onChange={() => setMode("event_log")} />
+                Event Log (Track2) - Offline-RealTime
+              </label>
+            </div>
+            {mode === "event_log" && (
+              <div className="form">
+                {gameLoadError ? (
+                  <div className="error">{gameLoadError}</div>
+                ) : (
+                  <label className="input-row">
+                    game_id
+                    <select value={selectedGame} onChange={(e) => setSelectedGame(e.target.value)}>
+                      {games.map((g) => (
+                        <option key={g.game_id} value={g.game_id}>
+                          {g.game_id} {g.home_team && `· ${g.home_team} vs ${g.away_team || ""}`} {g.match_date && `· ${g.match_date}`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <label className="input-row">
+                  Playback speed (x)
+                  <input type="number" min={1} max={60} value={playbackSpeed} onChange={(e) => setPlaybackSpeed(Number(e.target.value))} />
+                </label>
+                <button disabled={!selectedGame} onClick={handleCreateEventLog}>
+                  세션 생성
+                </button>
+              </div>
+            )}
+          </div>
           <div className="card-inner">
             <div className="card-head">
               <label>
@@ -158,6 +218,11 @@ export default function StartScreen() {
           flex-direction: column;
           gap: 12px;
         }
+        select {
+          border: 1px solid #cbd5e1;
+          border-radius: 8px;
+          padding: 8px 10px;
+        }
         .input-row {
           display: flex;
           flex-direction: column;
@@ -197,6 +262,10 @@ export default function StartScreen() {
           border: 1px solid #e5e7eb;
           border-radius: 8px;
           background: #f8fafc;
+        }
+        .error {
+          color: #b91c1c;
+          font-size: 0.9rem;
         }
         .link {
           color: #0f172a;
