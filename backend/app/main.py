@@ -36,6 +36,45 @@ except Exception as exc:  # noqa: BLE001
 async def root():
     return {"message": "KLeague tactical feedback backend", "service": settings.app_name}
 
+app.mount(
+    f"{settings.api_prefix}/evidence",
+    StaticFiles(directory=settings.evidence_path),
+    name="evidence",
+)
+
+
+@app.get(f"{settings.api_prefix}/health")
+async def health() -> Dict[str, Any]:
+    return {
+        "status": "ok" if track2_error is None else "degraded",
+        "track2": track2_validation,
+        "track2_error": track2_error,
+    }
+
+
+app.mount(
+    f"{settings.api_prefix}/evidence",
+    StaticFiles(directory=settings.evidence_path),
+    name="evidence",
+)
+
+
+@app.get(f"{settings.api_prefix}/health")
+async def health() -> Dict[str, Any]:
+    return {
+        "status": "ok" if track2_error is None else "degraded",
+        "track2": track2_validation,
+        "track2_error": track2_error,
+        "demo_mode": settings.demo_mode,
+    }
+
+
+app.mount(
+    f"{settings.api_prefix}/evidence",
+    StaticFiles(directory=settings.evidence_path),
+    name="evidence",
+)
+
 
 @app.get(f"{settings.api_prefix}/health")
 async def health() -> Dict[str, Any]:
