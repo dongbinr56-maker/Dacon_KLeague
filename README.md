@@ -35,6 +35,10 @@ Track2 이벤트 로그(`00_data/Track2/raw_data.csv`)를 기본 입력으로 �
 ## 스모크/데모 테스트
 - `scripts/demo.sh`는 health → game 목록 → 세션 생성/시작 → alert 확인 → evidence mp4/png 200 응답까지 자동 검증합니다.
 - 기존 `scripts/smoke_demo.sh`도 동일 플로우를 빠르게 확인할 수 있습니다.
+- 프론트 의존성 403/registry 이슈가 있을 경우:
+  - `bash scripts/doctor_frontend.sh`로 현재 registry/proxy/ssl 설정을 덤프
+  - `frontend/.npmrc`에서 registry를 `https://registry.npmjs.org/`로 강제
+  - 사내망/프록시가 있다면 `npm config get registry`와 `npm config list -l`에 표시된 proxy/https-proxy 값을 확인 후 조정
 
 ## 문서
 - `docs/ARCHITECTURE.md` : 전체 아키텍처 개요
