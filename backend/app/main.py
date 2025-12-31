@@ -36,6 +36,12 @@ except Exception as exc:  # noqa: BLE001
 async def root():
     return {"message": "KLeague tactical feedback backend", "service": settings.app_name}
 
+app.mount(
+    f"{settings.api_prefix}/evidence",
+    StaticFiles(directory=settings.evidence_path),
+    name="evidence",
+)
+
 
 @app.get(f"{settings.api_prefix}/health")
 async def health() -> Dict[str, Any]:
