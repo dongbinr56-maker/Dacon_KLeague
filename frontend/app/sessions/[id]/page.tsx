@@ -2,30 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { getSession, startSession, stopSession } from "../../../lib/api";
+import AlertsPanel from "../../../components/AlertsPanel";
+import VideoWithOverlay from "../../../components/VideoWithOverlay";
+import { Alert, Session, getAlerts, getSession, startSession, stopSession } from "../../../lib/api";
 import { connectSessionWs } from "../../../lib/ws";
-
-interface AlertPayload {
-  id: string;
-  pattern_type: string;
-  severity: string;
-  claim_text: string;
-  recommendation_text: string;
-  risk_text: string;
-  evidence: {
-    clips: string[];
-    overlays: string[];
-    metrics: Record<string, { name: string; value: number; unit?: string }>;
-  };
-}
-
-interface Session {
-  id: string;
-  status: string;
-  source_type: string;
-  mode: string;
-  download_url?: string | null;
-}
 
 interface Props {
   params: { id: string };
@@ -34,14 +14,17 @@ interface Props {
 export default function SessionPage({ params }: Props) {
   const { id } = params;
   const [session, setSession] = useState<Session | null>(null);
-  const [alerts, setAlerts] = useState<AlertPayload[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
   const [severityFilter, setSeverityFilter] = useState<string>("ALL");
   const [patternFilter, setPatternFilter] = useState<string>("ALL");
+  const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
   const alertIds = useRef<Set<string>>(new Set());
   const wsCleanup = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     loadSession();
+    loadAlerts();
+    connectWs();
     return () => {
       if (wsCleanup.current) wsCleanup.current();
     };
@@ -52,7 +35,18 @@ export default function SessionPage({ params }: Props) {
     try {
       const data = await getSession(id);
       setSession(data);
-      connectWs();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const loadAlerts = async () => {
+    try {
+      const data = await getAlerts(id);
+      const newIds = new Set(alertIds.current);
+      data.alerts.forEach((a) => newIds.add(a.id));
+      alertIds.current = newIds;
+      setAlerts(data.alerts.sort((a, b) => (b.ts_end || 0) - (a.ts_end || 0)));
     } catch (err) {
       console.error(err);
     }
@@ -71,14 +65,6 @@ export default function SessionPage({ params }: Props) {
     );
   };
 
-  const filteredAlerts = useMemo(() => {
-    return alerts.filter((a) => {
-      const severityOk = severityFilter === "ALL" || a.severity === severityFilter.toLowerCase();
-      const patternOk = patternFilter === "ALL" || a.pattern_type === patternFilter;
-      return severityOk && patternOk;
-    });
-  }, [alerts, severityFilter, patternFilter]);
-
   const start = async () => {
     await startSession(id);
     await loadSession();
@@ -89,26 +75,17 @@ export default function SessionPage({ params }: Props) {
     await loadSession();
   };
 
+  const selectedAlert = useMemo(() => alerts.find((a) => a.id === selectedAlertId) || null, [alerts, selectedAlertId]);
+
   return (
     <main className="layout">
-      <section className="video-panel">
-        <div className="video-wrap">
-          {session?.download_url ? (
-            <>
-              <video src={session.download_url} controls width="100%" />
-              <canvas className="overlay" aria-label="overlay" />
-            </>
-          ) : (
-            <div className="placeholder">Live 입력 또는 다운로드 URL 없음</div>
-          )}
-        </div>
+      <section className="left">
+        <VideoWithOverlay downloadUrl={session?.download_url} sourceType={session?.source_type || "file"} />
       </section>
 
-      <section className="sidebar">
+      <section className="right">
         <div className="status-row">
-          <span className={`badge status-${session?.status?.toLowerCase() || "unknown"}`}>
-            {session?.status || "-"}
-          </span>
+          <span className={`badge status-${session?.status?.toLowerCase() || "unknown"}`}>{session?.status || "-"}</span>
           <div className="actions">
             <button onClick={start} disabled={session?.status === "RUNNING"}>
               Start
@@ -119,84 +96,63 @@ export default function SessionPage({ params }: Props) {
           </div>
         </div>
 
-        <div className="filters">
-          <label>
-            Severity
-            <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value)}>
-              <option>ALL</option>
-              <option>LOW</option>
-              <option>MEDIUM</option>
-              <option>HIGH</option>
-            </select>
-          </label>
-          <label>
-            Pattern
-            <select value={patternFilter} onChange={(e) => setPatternFilter(e.target.value)}>
-              <option>ALL</option>
-              <option>build_up_bias</option>
-            </select>
-          </label>
-        </div>
+        <AlertsPanel
+          alerts={alerts}
+          selectedId={selectedAlertId}
+          severityFilter={severityFilter}
+          patternFilter={patternFilter}
+          onSeverityChange={setSeverityFilter}
+          onPatternChange={setPatternFilter}
+          onSelect={setSelectedAlertId}
+        />
 
-        <div className="alerts">
-          <h3>Alerts</h3>
-          <ul>
-            {filteredAlerts.map((a) => (
-              <li key={a.id} className={`alert severity-${a.severity}`}>
-                <div className="alert-head">
-                  <span className="pattern">{a.pattern_type}</span>
-                  <span className="sev">{a.severity}</span>
-                </div>
-                <div className="claim">{a.claim_text}</div>
-                <div className="evidence">
-                  {a.evidence?.clips?.length > 0 && (
-                    <div>
-                      Clips:
-                      <ul>
-                        {a.evidence.clips.map((c) => (
-                          <li key={c}>
-                            <a href={c} target="_blank" rel="noreferrer">
-                              {c}
-                            </a>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {a.evidence?.overlays?.length > 0 && (
-                    <div>
-                      Overlays:
-                      <ul>
-                        {a.evidence.overlays.map((c) => (
-                          <li key={c}>
-                            <a href={c} target="_blank" rel="noreferrer">
-                              {c}
-                            </a>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {a.evidence?.metrics && Object.keys(a.evidence.metrics).length > 0 && (
-                    <div className="metrics">
-                      Metrics:
-                      <div className="metric-grid">
-                        {Object.entries(a.evidence.metrics).map(([key, metric]) => (
-                          <div key={key} className="metric-card">
-                            <div className="metric-name">{metric.name}</div>
-                            <div className="metric-value">
-                              {metric.value} {metric.unit || ""}
-                            </div>
-                          </div>
-                        ))}
+        {selectedAlert && (
+          <div className="evidence-panel">
+            <h3>Evidence Detail</h3>
+            {selectedAlert.evidence?.clips?.length > 0 && (
+              <div>
+                Clips:
+                <ul>
+                  {selectedAlert.evidence.clips.map((c) => (
+                    <li key={c}>
+                      <a href={c} target="_blank" rel="noreferrer">
+                        {c}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {selectedAlert.evidence?.overlays?.length > 0 && (
+              <div>
+                Overlays:
+                <ul>
+                  {selectedAlert.evidence.overlays.map((c) => (
+                    <li key={c}>
+                      <a href={c} target="_blank" rel="noreferrer">
+                        {c}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {selectedAlert.evidence?.metrics && Object.keys(selectedAlert.evidence.metrics).length > 0 && (
+              <div className="metrics">
+                <div className="metric-grid">
+                  {Object.entries(selectedAlert.evidence.metrics).map(([key, metric]) => (
+                    <div key={key} className="metric-card">
+                      <div className="metric-name">{metric.name}</div>
+                      <div className="metric-value">
+                        {metric.value} {metric.unit || ""}
                       </div>
                     </div>
-                  )}
+                  ))}
                 </div>
-              </li>
-            ))}
-          </ul>
-        </div>
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       <style jsx>{`
@@ -207,32 +163,12 @@ export default function SessionPage({ params }: Props) {
           padding: 20px;
           font-family: Inter, system-ui, -apple-system, sans-serif;
         }
-        .video-panel {
-          background: #fff;
-          border: 1px solid #e5e7eb;
-          border-radius: 12px;
-          padding: 12px;
-        }
-        .video-wrap {
-          position: relative;
-        }
-        .overlay {
-          position: absolute;
-          inset: 0;
-          pointer-events: none;
-          border: 1px dashed #cbd5e1;
-        }
-        .placeholder {
-          height: 320px;
+        .left {
           display: flex;
-          align-items: center;
-          justify-content: center;
-          background: #f8fafc;
-          color: #475569;
-          border: 1px dashed #cbd5e1;
-          border-radius: 8px;
+          flex-direction: column;
+          gap: 12px;
         }
-        .sidebar {
+        .right {
           display: flex;
           flex-direction: column;
           gap: 12px;
@@ -281,48 +217,13 @@ export default function SessionPage({ params }: Props) {
           opacity: 0.5;
           cursor: not-allowed;
         }
-        .filters {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 8px;
-          background: #fff;
-          padding: 12px;
-          border: 1px solid #e5e7eb;
-          border-radius: 10px;
-        }
-        select {
-          padding: 6px 8px;
-          border-radius: 8px;
-          border: 1px solid #cbd5e1;
-        }
-        .alerts {
+        .evidence-panel {
           background: #fff;
           border: 1px solid #e5e7eb;
           border-radius: 10px;
           padding: 12px;
-          max-height: 70vh;
-          overflow: auto;
         }
-        .alerts ul {
-          list-style: none;
-          padding: 0;
-          margin: 0;
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
-        .alert {
-          border: 1px solid #e2e8f0;
-          border-radius: 10px;
-          padding: 10px;
-          background: #f8fafc;
-        }
-        .alert-head {
-          display: flex;
-          justify-content: space-between;
-          font-weight: 600;
-        }
-        .evidence ul {
+        .evidence-panel ul {
           margin: 4px 0 0;
           padding-left: 16px;
         }
@@ -343,15 +244,6 @@ export default function SessionPage({ params }: Props) {
         }
         .metric-value {
           font-weight: 700;
-        }
-        .severity-medium {
-          border-color: #fbbf24;
-        }
-        .severity-high {
-          border-color: #ef4444;
-        }
-        .severity-low {
-          border-color: #22c55e;
         }
       `}</style>
     </main>

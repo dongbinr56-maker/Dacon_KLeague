@@ -1,33 +1,25 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
-import {
-  SessionPayload,
-  UploadResponse,
-  createSession,
-  listSessions,
-  uploadVideo,
-} from "../lib/api";
+import UploadDropzone, { UploadState } from "../components/UploadDropzone";
+import { SessionPayload, UploadResponse, createSession, listSessions, uploadVideo } from "../lib/api";
 
-type UploadState = "IDLE" | "UPLOADING" | "DONE" | "ERROR";
-
-interface Session {
+interface SessionSummary {
   id: string;
   source_type: string;
-  mode: string;
   status: string;
-  download_url?: string | null;
 }
 
 export default function StartScreen() {
+  const router = useRouter();
   const [mode, setMode] = useState<"file" | "rtsp">("file");
   const [rtspUrl, setRtspUrl] = useState("");
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const [fps, setFps] = useState(25);
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [uploadState, setUploadState] = useState<UploadState>("IDLE");
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [lastUpload, setLastUpload] = useState<UploadResponse | null>(null);
-  const dropRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     refreshSessions();
@@ -42,100 +34,79 @@ export default function StartScreen() {
     }
   };
 
-  const handleFiles = async (files: FileList | null) => {
+  const createSessionAndGo = async (payload: SessionPayload) => {
+    const session = await createSession(payload);
+    router.push(`/sessions/${session.id}`);
+  };
+
+  const handleUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const file = files[0];
     setUploadState("UPLOADING");
     setUploadError(null);
     try {
-      const uploaded = await uploadVideo(file);
-      setLastUpload(uploaded);
+      const uploaded: UploadResponse = await uploadVideo(file);
       setUploadState("DONE");
-      await createSessionAndGo({ source_type: "file", mode: "offline_realtime", file_id: uploaded.file_id });
+      await createSessionAndGo({ source_type: "file", mode: "offline_realtime", fps: 25, file_id: uploaded.file_id });
     } catch (err: any) {
       setUploadState("ERROR");
       setUploadError(err?.message || "업로드에 실패했습니다");
     }
   };
 
-  const createSessionAndGo = async (payload: SessionPayload) => {
-    const session = await createSession(payload);
-    window.location.href = `/sessions/${session.id}`;
-  };
-
-  const onDrop = async (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    await handleFiles(e.dataTransfer.files);
-  };
-
-  const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
+  const handleCreateRtsp = async () => {
+    await createSessionAndGo({ source_type: "rtsp", mode: "live", rtsp_url: rtspUrl, fps });
   };
 
   return (
     <main className="page">
       <section className="card">
         <h1>입력 소스 선택</h1>
-        <div className="radio-group">
-          <label>
-            <input
-              type="radio"
-              name="mode"
-              value="file"
-              checked={mode === "file"}
-              onChange={() => setMode("file")}
-            />
-            업로드/파일 기반 (Offline-RealTime)
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="mode"
-              value="rtsp"
-              checked={mode === "rtsp"}
-              onChange={() => setMode("rtsp")}
-            />
-            라이브 RTSP (Live)
-          </label>
-        </div>
-
-        {mode === "file" ? (
-          <div className="upload-box" onDrop={onDrop} onDragOver={onDragOver} ref={dropRef}>
-            <p>여기로 파일을 Drag & Drop 하거나 아래 버튼으로 선택하세요.</p>
-            <input
-              type="file"
-              accept="video/*"
-              onChange={(e) => handleFiles(e.target.files)}
-              disabled={uploadState === "UPLOADING"}
-            />
-            <div className="upload-status">
-              상태: {uploadState}
-              {uploadError && <span className="error">{uploadError}</span>}
+        <div className="card-grid">
+          <div className="card-inner">
+            <div className="card-head">
+              <label>
+                <input type="radio" name="mode" checked={mode === "file"} onChange={() => setMode("file")} />
+                업로드/파일 분석 (Offline-RealTime)
+              </label>
             </div>
+            {mode === "file" && (
+              <UploadDropzone disabled={uploadState === "UPLOADING"} status={uploadState} error={uploadError} onFiles={handleUpload} />
+            )}
           </div>
-        ) : (
-          <div className="form">
-            <label className="input-row">
-              RTSP URL
-              <input value={rtspUrl} onChange={(e) => setRtspUrl(e.target.value)} placeholder="rtsp://..." />
-            </label>
-            <button
-              disabled={!rtspUrl}
-              onClick={() =>
-                createSessionAndGo({ source_type: "rtsp", mode: "live", rtsp_url: rtspUrl, fps: 25, buffer_ms: 300 })
-              }
-            >
-              세션 생성
-            </button>
+          <div className="card-inner">
+            <div className="card-head">
+              <label>
+                <input type="radio" name="mode" checked={mode === "rtsp"} onChange={() => setMode("rtsp")} />
+                RTSP 라이브 (Live)
+              </label>
+            </div>
+            {mode === "rtsp" && (
+              <div className="form">
+                <label className="input-row">
+                  RTSP URL
+                  <input value={rtspUrl} onChange={(e) => setRtspUrl(e.target.value)} placeholder="rtsp://..." />
+                </label>
+                <label className="input-row">
+                  FPS (기본 25)
+                  <input type="number" value={fps} onChange={(e) => setFps(Number(e.target.value))} />
+                </label>
+                <button disabled={!rtspUrl} onClick={handleCreateRtsp}>
+                  세션 생성
+                </button>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </section>
 
       <section className="card">
-        <h2>최근 세션</h2>
-        <button className="link" onClick={refreshSessions}>
-          새로고침
-        </button>
+        <div className="header-row">
+          <h2>최근 세션</h2>
+          <button className="link" onClick={refreshSessions}>
+            새로고침
+          </button>
+        </div>
         <ul className="session-list">
           {sessions.map((s) => (
             <li key={s.id}>
@@ -143,9 +114,9 @@ export default function StartScreen() {
                 <strong>{s.id}</strong> · {s.source_type} · {s.status}
               </div>
               <div className="actions">
-                <a className="link" href={`/sessions/${s.id}`}>
+                <button className="link" onClick={() => router.push(`/sessions/${s.id}`)}>
                   이동
-                </a>
+                </button>
               </div>
             </li>
           ))}
@@ -167,25 +138,20 @@ export default function StartScreen() {
           margin-bottom: 16px;
           box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
         }
-        .radio-group {
-          display: flex;
+        .card-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
           gap: 16px;
-          margin-bottom: 12px;
         }
-        .upload-box {
-          border: 2px dashed #cbd5e1;
+        .card-inner {
+          border: 1px solid #e5e7eb;
           border-radius: 10px;
-          padding: 16px;
-          text-align: center;
+          padding: 12px;
+          background: #f8fafc;
         }
-        .upload-status {
-          margin-top: 8px;
-          font-size: 0.9rem;
-          color: #475569;
-        }
-        .error {
-          color: #b91c1c;
-          margin-left: 8px;
+        .card-head {
+          font-weight: 600;
+          margin-bottom: 10px;
         }
         .form {
           display: flex;
@@ -239,6 +205,11 @@ export default function StartScreen() {
           border: none;
           cursor: pointer;
           padding: 0;
+        }
+        .header-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
         }
       `}</style>
     </main>

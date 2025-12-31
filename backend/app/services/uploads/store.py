@@ -2,6 +2,8 @@ import os
 from dataclasses import dataclass
 from typing import Dict, Optional
 
+from app.core.config import get_settings
+
 
 @dataclass
 class UploadItem:
@@ -12,7 +14,8 @@ class UploadItem:
 
     @property
     def download_url(self) -> str:
-        return f"/api/uploads/{self.file_id}"
+        settings = get_settings()
+        return f"{settings.api_prefix}/uploads/{self.file_id}"
 
 
 class UploadStore:

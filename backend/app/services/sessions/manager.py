@@ -137,8 +137,6 @@ class SessionManager:
     def _resolve_download_url(self, payload: SessionCreateRequest) -> str | None:
         if payload.source_type != SessionSourceType.file:
             return None
-        if payload.path:
-            return payload.path
         if payload.file_id:
             return upload_store.resolve_download_url(payload.file_id)
         return None

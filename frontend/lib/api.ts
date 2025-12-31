@@ -1,5 +1,29 @@
 export const apiBase = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api";
 
+export interface EvidenceMetric {
+  name: string;
+  value: number;
+  unit?: string;
+}
+
+export interface Evidence {
+  clips: string[];
+  overlays: string[];
+  metrics: Record<string, EvidenceMetric>;
+}
+
+export interface Alert {
+  id: string;
+  ts_start?: number;
+  ts_end?: number;
+  pattern_type: string;
+  severity: string;
+  claim_text: string;
+  recommendation_text: string;
+  risk_text: string;
+  evidence: Evidence;
+}
+
 export interface UploadResponse {
   file_id: string;
   storage_url: string;
@@ -17,6 +41,17 @@ export interface SessionPayload {
   path?: string;
   rtsp_url?: string;
   device_id?: number;
+}
+
+export interface Session {
+  id: string;
+  status: string;
+  source_type: string;
+  mode: string;
+  fps: number;
+  source_uri: string;
+  buffer_ms?: number | null;
+  download_url?: string | null;
 }
 
 export async function uploadVideo(file: File): Promise<UploadResponse> {
@@ -49,7 +84,7 @@ export async function stopSession(id: string) {
   return res.json();
 }
 
-export async function getSession(id: string) {
+export async function getSession(id: string): Promise<Session> {
   const res = await fetch(`${apiBase}/sessions/${id}`);
   if (!res.ok) throw new Error("Session not found");
   return res.json();
@@ -58,5 +93,11 @@ export async function getSession(id: string) {
 export async function listSessions() {
   const res = await fetch(`${apiBase}/sessions`);
   if (!res.ok) throw new Error("Failed to list sessions");
+  return res.json();
+}
+
+export async function getAlerts(sessionId: string): Promise<{ alerts: Alert[] }> {
+  const res = await fetch(`${apiBase}/sessions/${sessionId}/alerts`);
+  if (!res.ok) throw new Error("Failed to fetch alerts");
   return res.json();
 }
