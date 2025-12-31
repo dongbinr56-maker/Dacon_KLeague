@@ -8,7 +8,8 @@ class Settings(BaseSettings):
     storage_path: str = Field(default="/workspace/storage")
     evidence_path: str = Field(default="/workspace/storage/evidence")
     frontend_origin: str = Field(default="http://localhost:3000")
-    events_data_path: str = Field(default="/workspace/storage/train.csv")
+    events_data_path: str = Field(default="/workspace/00_data/Track2/raw_data.csv")
+    match_info_path: str = Field(default="/workspace/00_data/Track2/match_info.csv")
 
     class Config:
         env_file = ".env"
