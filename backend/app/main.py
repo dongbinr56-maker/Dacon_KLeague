@@ -110,6 +110,23 @@ app.mount(
 )
 
 
+@app.get(f"{settings.api_prefix}/health")
+async def health() -> Dict[str, Any]:
+    return {
+        "status": "ok" if track2_error is None else "degraded",
+        "track2": track2_validation,
+        "track2_error": track2_error,
+        "demo_mode": settings.demo_mode,
+    }
+
+
+app.mount(
+    f"{settings.api_prefix}/evidence",
+    StaticFiles(directory=settings.evidence_path),
+    name="evidence",
+)
+
+
 app.include_router(sessions.router, prefix=f"{settings.api_prefix}/sessions", tags=["sessions"])
 app.include_router(uploads.router, prefix=f"{settings.api_prefix}/uploads", tags=["uploads"])
 app.include_router(track2.router, prefix=f"{settings.api_prefix}/track2", tags=["track2"])
