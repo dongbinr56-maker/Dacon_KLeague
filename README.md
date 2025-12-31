@@ -1,34 +1,40 @@
-# 고정캠 기반 실시간 전술 피드백 서비스 (MVP)
+# 고정캠 기반 전술 피드백 데모 (Track2 이벤트 로그 우선)
 
-본 레포는 고정캠(전술캠) 영상을 입력으로 **실시간/준실시간 전술 패턴**을 탐지하고 **근거(클립/오버레이/수치)**와 함께 피드백을 제공하는 End-to-End 데모 구현을 목표로 합니다. 추가 요구사항인 **입력 모드 선택(Live RTSP vs 업로드 파일)**을 반영했습니다.
+Track2 이벤트 로그(`00_data/Track2/raw_data.csv`)를 기본 입력으로 삼아 **세션 생성 → 이벤트 재생 → Alert 생성 → Evidence(mp4/png) 서빙**까지 End-to-End로 돌릴 수 있는 MVP입니다.
 
-## 주요 구성
+## 데모 실행(10줄 내 요약)
+1) Track2 데이터를 지정 경로에 둔다: `00_data/Track2/raw_data.csv`, `00_data/Track2/match_info.csv`  
+2) 필요한 경우 `.env`로 `EVENTS_DATA_PATH`/`MATCH_INFO_PATH`/`FRONTEND_ORIGIN` 등을 override  
+3) `docker-compose up --build`  
+4) 백엔드: `http://localhost:8000/api/health`(Track2 검증 상태 확인), `http://localhost:8000/api/docs`  
+5) 프론트: `http://localhost:3000` → 입력 모드에서 **Event Log (Track2)** 선택  
+6) `game_id` 선택 + playback speed 입력 후 세션 생성 → 자동으로 Analysis 화면 이동  
+7) Start 버튼 → 30~60초 내 Alert 생성(패턴: build_up_bias / transition_risk / final_third_pressure)  
+8) Alert 클릭 → Evidence 링크(mp4/png)가 `/api/evidence/...` 경로로 열리고 404가 아니다  
+9) 업로드한 파일은 `upload_index.json`으로 persist되어 재시작 후에도 다운로드 가능  
+10) 문제 발생 시 `/api/health` 응답의 `track2_error` 메시지를 확인
 
-- **Backend (FastAPI)**: 세션 생성/시작/정지, 업로드, WebSocket 알림
-- **Ingest 인터페이스**: 파일 / RTSP / 웹캠 소스를 통합하는 `IngestSource`
-- **Frontend (Next.js)**: 입력 모드 선택 UI, 세션 목록, 알림 표시(placeholder)
-- **Docker Compose**: backend, frontend, redis, postgres, minio 구성
-- **Docs**: 아키텍처 및 데모 가이드
+## 구성 요소
+- **Backend (FastAPI)**: Track2 이벤트 ingest, 세션/알림/업로드, evidence 서빙, health 체크
+- **Frontend (Next.js)**: Event Log 입력 모드 + `game_id` 선택, 세션/알림 뷰어, evidence 링크 노출
+- **Evidence 생성**: 이벤트 윈도우를 10초 mp4/overlay png로 렌더링
 
-## 빠른 시작
+## 핵심 엔드포인트
+- `GET /api/health` : Track2 검증 상태 확인
+- `GET /api/track2/games` : 사용 가능한 `game_id` 목록
+- `POST /api/sessions` : `source_type=event_log`, `game_id`, `playback_speed` 등으로 세션 생성
+- `POST /api/sessions/{id}/start|stop` : 세션 제어
+- `GET /api/sessions/{id}/alerts` / `WS /api/ws/sessions/{id}` : 알림 수신
+- Evidence 정적 서빙: `/api/evidence/{session_id}/clip_{alert_id}.mp4`, `overlay_{alert_id}.png`
 
-```bash
-docker-compose up --build
-```
-- Backend: http://localhost:8000
-- Frontend: http://localhost:3000
+## 데이터/재현성
+- Track2가 기본 입력이며, 외부 데이터는 필요하지 않습니다.
+- 데이터 경로 기본값은 `backend/app/core/config.py`에 정의되어 있으며 ENV로 덮어쓸 수 있습니다.
+- 외부 데이터를 추가로 쓸 경우 **무료/재현 가능/라이선스 명시** + 수집 스크립트를 `docs/external_data.md`에 기록해야 합니다.
 
-## 파일 업로드 흐름
-1. `POST /api/uploads`로 mp4 업로드 → `{file_id, storage_url}` 응답
-2. `POST /api/sessions`에 `source_type: "file"` 및 `path` 또는 `file_id` 전달
-3. `POST /api/sessions/{id}/start`로 세션 시작 → WebSocket으로 상태/알림 수신
+## 스모크 테스트
+- `scripts/smoke_demo.sh`를 실행하면 health → game_id 조회 → 세션 생성/시작 → 60초 이내 alert 확인 → evidence mp4/png 다운로드까지 자동 검증합니다.
 
-## 라이브 RTSP 흐름
-1. `POST /api/sessions`에 `source_type: "rtsp"`, `rtsp_url`, `mode: "live"` 전달
-2. `POST /api/sessions/{id}/start` → 상태 `CONNECTING → RUNNING` 전환
-3. WebSocket(`/api/ws/sessions/{id}`)으로 상태/알림 실시간 수신
-
-## 현재 상태 (MVP Skeleton)
-- 분석 파이프라인은 placeholder 알림을 주기적으로 송출하도록 시뮬레이션되어 있습니다.
-- Ingest 인터페이스를 통해 파일/RTSP/웹캠 소스를 동일 파이프라인에 연결할 수 있는 구조를 마련했습니다.
-- 추후 캘리브레이션, 탐지/트래킹, 패턴 룰, Evidence 생성 모듈을 연동할 수 있도록 디렉터리/스켈레톤을 준비했습니다.
+## 문서
+- `docs/ARCHITECTURE.md` : 전체 아키텍처 개요
+- `docs/MVP_DEMO_GUIDE.md` : 추가 데모 팁
