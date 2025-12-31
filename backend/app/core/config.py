@@ -6,7 +6,9 @@ class Settings(BaseSettings):
     app_name: str = Field(default="KLeague Tactical Feedback")
     api_prefix: str = Field(default="/api")
     storage_path: str = Field(default="/workspace/storage")
-    frontend_origin: str = Field(default="*")
+    evidence_path: str = Field(default="/workspace/storage/evidence")
+    frontend_origin: str = Field(default="http://localhost:3000")
+    events_data_path: str = Field(default="/workspace/storage/train.csv")
 
     class Config:
         env_file = ".env"
