@@ -58,3 +58,9 @@
 - [x] README에 데모 실행 절차(10줄 내) 명시
 - [ ] 외부 데이터/모델 사용 시 `docs/external_data.md`에 출처/라이선스/스크립트 기록
 - [ ] Alert 샘플 JSON 1개와 evidence 파일 경로 예시 문서화
+
+## K. P3 Enforce/Smoke
+- [ ] Track2 검증 실패 시 세션 생성/시작이 4xx로 막힌다.
+- [ ] Evidence 생성 실패 시 alert가 publish되지 않는다(로그 남김).
+- [ ] DEMO_MODE에서 30~60초 내 최소 1개 alert가 보장된다.
+- [ ] `scripts/smoke_demo.sh`가 alert+evidence 200 OK를 자동 검증한다.

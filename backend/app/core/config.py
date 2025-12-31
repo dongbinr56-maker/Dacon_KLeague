@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     frontend_origin: str = Field(default="http://localhost:3000")
     events_data_path: str = Field(default="/workspace/00_data/Track2/raw_data.csv")
     match_info_path: str = Field(default="/workspace/00_data/Track2/match_info.csv")
+    demo_mode: bool = Field(default=True)
 
     class Config:
         env_file = ".env"

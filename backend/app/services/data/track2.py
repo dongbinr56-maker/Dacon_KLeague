@@ -52,7 +52,7 @@ def ensure_track2_ready() -> Dict[str, str]:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-def list_game_ids(limit: int | None = None) -> List[Dict[str, str]]:
+def list_game_ids(limit: int | None = None, recommend: bool = False) -> List[Dict[str, str]]:
     """Return available game_id list with optional metadata from match_info."""
     settings = get_settings()
     _ensure_file(settings.events_data_path, "Track2 raw_data")
@@ -84,7 +84,10 @@ def list_game_ids(limit: int | None = None) -> List[Dict[str, str]]:
                     }
 
     result: List[Dict[str, str]] = []
-    for gid in game_ids:
+    ordered = game_ids[:]
+    if recommend and game_ids:
+        ordered = sorted(game_ids, key=lambda g: g)[: limit or len(game_ids)]
+    for gid in ordered:
         info = meta.get(gid, {})
         result.append(
             {
