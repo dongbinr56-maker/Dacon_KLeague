@@ -74,6 +74,7 @@ class Session(BaseModel):
     fps: int
     source_uri: str
     buffer_ms: Optional[int] = None
+    download_url: Optional[str] = None
 
 
 class SessionStatusEvent(BaseModel):

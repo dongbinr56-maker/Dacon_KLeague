@@ -16,11 +16,14 @@ from app.schemas.session import (
     SessionStatus,
     SessionStatusEvent,
 )
+from app.services.ingest.factory import ingest_factory
+from app.services.uploads.store import upload_store
 
 
 @dataclass
 class SessionState:
     session: Session
+    session_create_payload: SessionCreateRequest
     alerts: List[Alert] = field(default_factory=list)
     status_events: List[SessionStatusEvent] = field(default_factory=list)
     task: asyncio.Task | None = None
@@ -44,8 +47,9 @@ class SessionManager:
                 fps=payload.fps,
                 buffer_ms=payload.buffer_ms,
                 source_uri=source_uri,
+                download_url=self._resolve_download_url(payload),
             )
-            state = SessionState(session=session)
+            state = SessionState(session=session, session_create_payload=payload)
             self._sessions[session_id] = state
             await self._push_status(state, SessionStatus.created, "Session created")
             return session
@@ -55,7 +59,14 @@ class SessionManager:
         if state.session.status in {SessionStatus.running, SessionStatus.lost}:
             return state.session
         await self._push_status(state, SessionStatus.connecting, "Connecting to source")
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.05)
+        try:
+            ingest_source = ingest_factory.build(state.session_create_payload)
+            ingest_source.open()
+        except Exception as exc:  # pragma: no cover - placeholder resilience
+            await self._push_status(state, SessionStatus.lost, f"Failed to open source: {exc}")
+            return state.session
+
         await self._push_status(state, SessionStatus.running, "Pipeline started")
         state.task = asyncio.create_task(self._simulate_analysis(session_id))
         return state.session
@@ -69,6 +80,10 @@ class SessionManager:
 
     async def list_sessions(self) -> List[Session]:
         return [s.session for s in self._sessions.values()]
+
+    async def get_session(self, session_id: str) -> Session:
+        state = self._sessions[session_id]
+        return state.session
 
     async def get_alerts(self, session_id: str) -> AlertsResponse:
         state = self._sessions[session_id]
@@ -85,6 +100,7 @@ class SessionManager:
             await asyncio.sleep(delay)
             alert = self._make_placeholder_alert(session_id)
             state.alerts.append(alert)
+            await self._push_status(state, SessionStatus.running, "Alert generated")
 
     def _make_placeholder_alert(self, session_id: str) -> Alert:
         ts = datetime.utcnow().timestamp()
@@ -117,6 +133,15 @@ class SessionManager:
         if payload.source_type == SessionSourceType.rtsp:
             return payload.rtsp_url or ""
         return f"webcam://{payload.device_id}"
+
+    def _resolve_download_url(self, payload: SessionCreateRequest) -> str | None:
+        if payload.source_type != SessionSourceType.file:
+            return None
+        if payload.path:
+            return payload.path
+        if payload.file_id:
+            return upload_store.resolve_download_url(payload.file_id)
+        return None
 
     async def _push_status(self, state: SessionState, status: SessionStatus, detail: str) -> None:
         state.session.status = status

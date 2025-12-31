@@ -18,6 +18,14 @@ async def create_session(payload: SessionCreateRequest) -> Session:
     return await session_manager.create_session(payload)
 
 
+@router.get("/{session_id}", response_model=Session)
+async def get_session(session_id: str) -> Session:
+    try:
+        return await session_manager.get_session(session_id)
+    except KeyError as exc:  # pragma: no cover
+        raise HTTPException(status_code=404, detail="Session not found") from exc
+
+
 @router.post("/{session_id}/start", response_model=Session)
 async def start_session(session_id: str, payload: StartSessionRequest | None = None) -> Session:
     try:

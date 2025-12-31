@@ -1,89 +1,82 @@
-\"use client\";
+"use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+import {
+  SessionPayload,
+  UploadResponse,
+  createSession,
+  listSessions,
+  uploadVideo,
+} from "../lib/api";
+
+type UploadState = "IDLE" | "UPLOADING" | "DONE" | "ERROR";
 
 interface Session {
   id: string;
   source_type: string;
   mode: string;
   status: string;
-  fps: number;
-  source_uri: string;
+  download_url?: string | null;
 }
 
-interface Alert {
-  id: string;
-  pattern_type: string;
-  severity: string;
-  claim_text: string;
-  recommendation_text: string;
-  risk_text: string;
-}
-
-const apiBase = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api";
-
-export default function HomePage() {
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [mode, setMode] = useState("file");
+export default function StartScreen() {
+  const [mode, setMode] = useState<"file" | "rtsp">("file");
   const [rtspUrl, setRtspUrl] = useState("");
-  const [filePath, setFilePath] = useState("");
-  const [selectedSession, setSelectedSession] = useState<string | null>(null);
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-
-  const fetchSessions = async () => {
-    const res = await fetch(`${apiBase}/sessions`);
-    const data = await res.json();
-    setSessions(data.sessions || []);
-  };
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [uploadState, setUploadState] = useState<UploadState>("IDLE");
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [lastUpload, setLastUpload] = useState<UploadResponse | null>(null);
+  const dropRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    fetchSessions();
+    refreshSessions();
   }, []);
 
-  const createSession = async () => {
-    const payload: any = {
-      source_type: mode,
-      mode: mode === "file" ? "offline_realtime" : "live",
-      fps: 25,
-    };
-    if (mode === "file") {
-      payload.path = filePath;
-    } else {
-      payload.rtsp_url = rtspUrl;
+  const refreshSessions = async () => {
+    try {
+      const data = await listSessions();
+      setSessions(data.sessions || []);
+    } catch (err) {
+      console.error(err);
     }
-
-    const res = await fetch(`${apiBase}/sessions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const session = await res.json();
-    setSelectedSession(session.id);
-    await fetchSessions();
   };
 
-  const startSession = async (id: string) => {
-    await fetch(`${apiBase}/sessions/${id}/start`, { method: "POST" });
-    await fetchSessions();
-    subscribeWs(id);
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    setUploadState("UPLOADING");
+    setUploadError(null);
+    try {
+      const uploaded = await uploadVideo(file);
+      setLastUpload(uploaded);
+      setUploadState("DONE");
+      await createSessionAndGo({ source_type: "file", mode: "offline_realtime", file_id: uploaded.file_id });
+    } catch (err: any) {
+      setUploadState("ERROR");
+      setUploadError(err?.message || "업로드에 실패했습니다");
+    }
   };
 
-  const subscribeWs = (id: string) => {
-    const ws = new WebSocket(`${apiBase.replace("http", "ws")}/ws/sessions/${id}`);
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === "alert") {
-        setAlerts((prev) => [...prev, data.payload]);
-      }
-    };
+  const createSessionAndGo = async (payload: SessionPayload) => {
+    const session = await createSession(payload);
+    window.location.href = `/sessions/${session.id}`;
+  };
+
+  const onDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    await handleFiles(e.dataTransfer.files);
+  };
+
+  const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
   };
 
   return (
-    <div style={{ padding: 24, fontFamily: "Inter, sans-serif" }}>
-      <h1>고정캠 전술 피드백 데모</h1>
-      <section style={{ marginBottom: 16 }}>
-        <h2>입력 소스 선택</h2>
-        <div>
+    <main className="page">
+      <section className="card">
+        <h1>입력 소스 선택</h1>
+        <div className="radio-group">
           <label>
             <input
               type="radio"
@@ -92,9 +85,9 @@ export default function HomePage() {
               checked={mode === "file"}
               onChange={() => setMode("file")}
             />
-            업로드/파일 재생
+            업로드/파일 기반 (Offline-RealTime)
           </label>
-          <label style={{ marginLeft: 12 }}>
+          <label>
             <input
               type="radio"
               name="mode"
@@ -102,57 +95,152 @@ export default function HomePage() {
               checked={mode === "rtsp"}
               onChange={() => setMode("rtsp")}
             />
-            라이브 RTSP
+            라이브 RTSP (Live)
           </label>
         </div>
+
         {mode === "file" ? (
-          <div style={{ marginTop: 8 }}>
+          <div className="upload-box" onDrop={onDrop} onDragOver={onDragOver} ref={dropRef}>
+            <p>여기로 파일을 Drag & Drop 하거나 아래 버튼으로 선택하세요.</p>
             <input
-              placeholder="/path/to/video.mp4"
-              value={filePath}
-              onChange={(e) => setFilePath(e.target.value)}
-              style={{ width: 320 }}
+              type="file"
+              accept="video/*"
+              onChange={(e) => handleFiles(e.target.files)}
+              disabled={uploadState === "UPLOADING"}
             />
+            <div className="upload-status">
+              상태: {uploadState}
+              {uploadError && <span className="error">{uploadError}</span>}
+            </div>
           </div>
         ) : (
-          <div style={{ marginTop: 8 }}>
-            <input
-              placeholder="rtsp://..."
-              value={rtspUrl}
-              onChange={(e) => setRtspUrl(e.target.value)}
-              style={{ width: 320 }}
-            />
+          <div className="form">
+            <label className="input-row">
+              RTSP URL
+              <input value={rtspUrl} onChange={(e) => setRtspUrl(e.target.value)} placeholder="rtsp://..." />
+            </label>
+            <button
+              disabled={!rtspUrl}
+              onClick={() =>
+                createSessionAndGo({ source_type: "rtsp", mode: "live", rtsp_url: rtspUrl, fps: 25, buffer_ms: 300 })
+              }
+            >
+              세션 생성
+            </button>
           </div>
         )}
-        <button style={{ marginTop: 8 }} onClick={createSession}>
-          세션 생성
-        </button>
       </section>
 
-      <section style={{ marginBottom: 16 }}>
-        <h2>세션 목록</h2>
-        <ul>
+      <section className="card">
+        <h2>최근 세션</h2>
+        <button className="link" onClick={refreshSessions}>
+          새로고침
+        </button>
+        <ul className="session-list">
           {sessions.map((s) => (
             <li key={s.id}>
-              <strong>{s.id}</strong> - {s.source_type} - {s.status}
-              <button style={{ marginLeft: 8 }} onClick={() => startSession(s.id)}>
-                시작
-              </button>
+              <div>
+                <strong>{s.id}</strong> · {s.source_type} · {s.status}
+              </div>
+              <div className="actions">
+                <a className="link" href={`/sessions/${s.id}`}>
+                  이동
+                </a>
+              </div>
             </li>
           ))}
         </ul>
       </section>
 
-      <section>
-        <h2>알림(placeholder)</h2>
-        <ul>
-          {alerts.map((a) => (
-            <li key={a.id}>
-              <strong>{a.pattern_type}</strong> [{a.severity}] - {a.claim_text}
-            </li>
-          ))}
-        </ul>
-      </section>
-    </div>
+      <style jsx>{`
+        .page {
+          max-width: 960px;
+          margin: 0 auto;
+          padding: 24px;
+          font-family: Inter, system-ui, -apple-system, sans-serif;
+        }
+        .card {
+          background: #fff;
+          border: 1px solid #e5e7eb;
+          border-radius: 12px;
+          padding: 20px;
+          margin-bottom: 16px;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+        }
+        .radio-group {
+          display: flex;
+          gap: 16px;
+          margin-bottom: 12px;
+        }
+        .upload-box {
+          border: 2px dashed #cbd5e1;
+          border-radius: 10px;
+          padding: 16px;
+          text-align: center;
+        }
+        .upload-status {
+          margin-top: 8px;
+          font-size: 0.9rem;
+          color: #475569;
+        }
+        .error {
+          color: #b91c1c;
+          margin-left: 8px;
+        }
+        .form {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .input-row {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          font-size: 0.95rem;
+        }
+        .input-row input {
+          border: 1px solid #cbd5e1;
+          border-radius: 8px;
+          padding: 8px 10px;
+        }
+        button {
+          background: #0ea5e9;
+          color: white;
+          border: none;
+          border-radius: 8px;
+          padding: 10px 14px;
+          cursor: pointer;
+        }
+        button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        .session-list {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .session-list li {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 10px 12px;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          background: #f8fafc;
+        }
+        .link {
+          color: #0f172a;
+          text-decoration: underline;
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 0;
+        }
+      `}</style>
+    </main>
   );
 }
