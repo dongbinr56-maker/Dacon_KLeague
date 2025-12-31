@@ -3,11 +3,10 @@ import contextlib
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-import cv2
-import numpy as np
-
+from app.core.config import get_settings
+from app.schemas.event import EventRecord
 from app.schemas.session import (
     Alert,
     AlertsResponse,
@@ -35,6 +34,7 @@ class SessionState:
     status_events: List[SessionStatusEvent] = field(default_factory=list)
     task: asyncio.Task | None = None
     ingest_source: Optional[IngestSource] = None
+    last_pattern_ts: Dict[str, float] = field(default_factory=dict)
 
 
 class SessionManager:
@@ -56,6 +56,7 @@ class SessionManager:
                 buffer_ms=payload.buffer_ms,
                 source_uri=source_uri,
                 download_url=self._resolve_download_url(payload),
+                game_id=payload.game_id,
             )
             state = SessionState(session=session, session_create_payload=payload)
             self._sessions[session_id] = state
@@ -77,7 +78,10 @@ class SessionManager:
             return state.session
 
         await self._push_status(state, SessionStatus.running, "Pipeline started")
-        state.task = asyncio.create_task(self._run_offline_realtime(session_id))
+        if state.session_create_payload.source_type == SessionSourceType.event_log:
+            state.task = asyncio.create_task(self._run_event_realtime(session_id))
+        else:
+            state.task = asyncio.create_task(self._run_offline_realtime(session_id))
         return state.session
 
     async def stop_session(self, session_id: str, reason: str | None = None) -> Session:
@@ -108,50 +112,56 @@ class SessionManager:
         return state.status_events
 
     async def _run_offline_realtime(self, session_id: str) -> None:
+        """Fallback pipeline for non-event sources; emits a stub alert to keep demo resilient."""
+        state = self._sessions[session_id]
+        ingest_source = state.ingest_source
+        try:
+            await asyncio.sleep(3)
+            alert = self._create_alert(
+                session_id=session_id,
+                ts=5.0,
+                pattern_type="build_up_bias",
+                severity=Severity.medium,
+                metrics={"flow_x_bias": 0.2},
+                events_slice=[],
+            )
+            state.alerts.append(alert)
+            await self._push_status(state, SessionStatus.running, "Fallback alert generated")
+        except asyncio.CancelledError:  # pragma: no cover
+            pass
+        finally:
+            if ingest_source:
+                ingest_source.close()
+                state.ingest_source = None
+            if state.session.status != SessionStatus.stopped:
+                await self._push_status(state, SessionStatus.stopped, "Stream completed")
+            state.task = None
+
+    async def _run_event_realtime(self, session_id: str) -> None:
         state = self._sessions[session_id]
         ingest_source = state.ingest_source
         if ingest_source is None:
             await self._push_status(state, SessionStatus.lost, "Ingest source missing")
             return
 
-        prev_gray: Optional[np.ndarray] = None
-        metrics_window: List[Tuple[float, float, float]] = []
+        window: List[EventRecord] = []
         last_eval_ts = 0.0
-        window_seconds = 30.0
+        window_seconds = 45.0
 
         try:
             while state.session.status == SessionStatus.running:
                 frame_data = await asyncio.to_thread(ingest_source.read_frame)
                 if frame_data is None:
                     break
-                frame, ts = frame_data
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                event, ts = frame_data
+                if not isinstance(event, EventRecord):
+                    continue
+                window.append(event)
+                window = [ev for ev in window if ts - ev.time_seconds <= window_seconds]
 
-                if prev_gray is not None:
-                    flow = cv2.calcOpticalFlowFarneback(
-                        prev_gray, gray, None, 0.5, 3, 15, 3, 5, 1.2, 0
-                    )
-                    fx = flow[..., 0]
-                    fy = flow[..., 1]
-                    fx_adj = fx - np.median(fx)
-                    fy_adj = fy - np.median(fy)
-                    flow_x_bias = float(np.mean(fx_adj) / (np.mean(np.abs(fx_adj)) + 1e-6))
-                    motion_intensity = float(np.mean(np.sqrt(fx_adj**2 + fy_adj**2)))
-
-                    metrics_window.append((ts, flow_x_bias, motion_intensity))
-                    metrics_window = [m for m in metrics_window if ts - m[0] <= window_seconds]
-
-                    if ts - last_eval_ts >= 1.0:
-                        last_eval_ts = ts
-                        await self._evaluate_and_alert(
-                            state=state,
-                            ts=ts,
-                            metrics_window=metrics_window,
-                            flow_x_bias=flow_x_bias,
-                            motion_intensity=motion_intensity,
-                        )
-
-                prev_gray = gray
+                if ts - last_eval_ts >= 1.0:
+                    last_eval_ts = ts
+                    await self._evaluate_event_alerts(state, window, ts)
                 await asyncio.sleep(0)
         except asyncio.CancelledError:  # pragma: no cover - cooperative cancel
             pass
@@ -163,6 +173,15 @@ class SessionManager:
             state.task = None
 
     def _resolve_source_uri(self, payload: SessionCreateRequest) -> str:
+        if payload.source_type == SessionSourceType.event_log:
+            settings = get_settings()
+            if payload.dataset_path:
+                return payload.dataset_path
+            if payload.path:
+                return payload.path
+            if payload.file_id:
+                return upload_store.resolve_path(payload.file_id) or payload.file_id
+            return settings.events_data_path
         if payload.source_type == SessionSourceType.file:
             if payload.path:
                 return payload.path
@@ -190,92 +209,143 @@ class SessionManager:
         )
         state.status_events.append(event)
 
-    async def _evaluate_and_alert(
-        self,
-        state: SessionState,
-        ts: float,
-        metrics_window: List[Tuple[float, float, float]],
-        flow_x_bias: float,
-        motion_intensity: float,
-    ) -> None:
-        bias_severity = self._evaluate_bias_window(metrics_window)
-        transition_severity, transition_metric = self._evaluate_transition_risk(metrics_window)
-        triggered = False
+    async def _evaluate_event_alerts(self, state: SessionState, window: List[EventRecord], ts: float) -> None:
+        patterns_triggered = False
+        build_up = self._detect_build_up_bias(window)
+        if build_up:
+            severity, metrics = build_up
+            if self._should_emit(state, "build_up_bias", ts):
+                alert = self._create_alert(
+                    session_id=state.session.id,
+                    ts=ts,
+                    pattern_type="build_up_bias",
+                    severity=severity,
+                    metrics=metrics,
+                    events_slice=self._events_for_evidence(window, ts),
+                )
+                state.alerts.append(alert)
+                state.last_pattern_ts["build_up_bias"] = ts
+                patterns_triggered = True
+                await self._push_status(state, SessionStatus.running, "build_up_bias alert generated")
 
-        if bias_severity:
+        transition = self._detect_transition_risk(window)
+        if transition:
+            severity, metrics = transition
+            if self._should_emit(state, "transition_risk", ts):
+                alert = self._create_alert(
+                    session_id=state.session.id,
+                    ts=ts,
+                    pattern_type="transition_risk",
+                    severity=severity,
+                    metrics=metrics,
+                    events_slice=self._events_for_evidence(window, ts),
+                )
+                state.alerts.append(alert)
+                state.last_pattern_ts["transition_risk"] = ts
+                patterns_triggered = True
+                await self._push_status(state, SessionStatus.running, "transition_risk alert generated")
+
+        pressure = self._detect_final_third_pressure(window)
+        if pressure:
+            severity, metrics = pressure
+            if self._should_emit(state, "final_third_pressure", ts):
+                alert = self._create_alert(
+                    session_id=state.session.id,
+                    ts=ts,
+                    pattern_type="final_third_pressure",
+                    severity=severity,
+                    metrics=metrics,
+                    events_slice=self._events_for_evidence(window, ts),
+                )
+                state.alerts.append(alert)
+                state.last_pattern_ts["final_third_pressure"] = ts
+                patterns_triggered = True
+                await self._push_status(state, SessionStatus.running, "final_third_pressure alert generated")
+
+        if not patterns_triggered and ts >= 30 and not state.alerts and window:
             alert = self._create_alert(
                 session_id=state.session.id,
                 ts=ts,
                 pattern_type="build_up_bias",
-                severity=bias_severity,
-                metrics={"flow_x_bias": flow_x_bias, "motion_intensity": motion_intensity},
+                severity=Severity.medium,
+                metrics={"event_count": float(len(window))},
+                events_slice=self._events_for_evidence(window, ts),
             )
             state.alerts.append(alert)
-            triggered = True
-            await self._push_status(state, SessionStatus.running, "build_up_bias alert generated")
-
-        if transition_severity:
-            alert = self._create_alert(
-                session_id=state.session.id,
-                ts=ts,
-                pattern_type="transition_risk",
-                severity=transition_severity,
-                metrics={
-                    "flow_x_bias": flow_x_bias,
-                    "motion_intensity": motion_intensity,
-                    "transition_ratio": transition_metric,
-                },
-            )
-            state.alerts.append(alert)
-            triggered = True
-            await self._push_status(state, SessionStatus.running, "transition_risk alert generated")
-
-        if not triggered and ts >= 30 and not state.alerts and metrics_window:
-            fallback_severity = Severity.medium
-            alert = self._create_alert(
-                session_id=state.session.id,
-                ts=ts,
-                pattern_type="build_up_bias",
-                severity=fallback_severity,
-                metrics={"flow_x_bias": flow_x_bias, "motion_intensity": motion_intensity},
-            )
-            state.alerts.append(alert)
+            state.last_pattern_ts["build_up_bias"] = ts
             await self._push_status(state, SessionStatus.running, "fallback alert generated")
 
-    def _evaluate_bias_window(self, metrics_window: List[Tuple[float, float, float]]) -> Severity | None:
-        if not metrics_window:
+    def _detect_build_up_bias(self, window: List[EventRecord]) -> Optional[Tuple[Severity, Dict[str, float]]]:
+        passes = [
+            ev
+            for ev in window
+            if (ev.type_name or "").lower() in {"pass", "carry"} and ev.start_x is not None and ev.end_x is not None
+        ]
+        if len(passes) < 8:
             return None
-        biases = [abs(bias) for _, bias, _ in metrics_window]
-        count_high = sum(1 for b in biases if b > 0.25)
-        count_med = sum(1 for b in biases if b > 0.15)
-        window_len = len(biases)
+        dx = [ev.end_x - ev.start_x for ev in passes]
+        mean_dx = sum(dx) / len(dx)
+        right_channel = sum(1 for ev in passes if ev.start_y is not None and ev.start_y > (68 * 2 / 3))
+        left_channel = sum(1 for ev in passes if ev.start_y is not None and ev.start_y < (68 / 3))
+        total_channel = right_channel + left_channel + sum(
+            1 for ev in passes if ev.start_y is not None and (68 / 3) <= ev.start_y <= (68 * 2 / 3)
+        )
+        right_ratio = right_channel / total_channel if total_channel else 0.0
+        metrics = {
+            "mean_dx": float(mean_dx),
+            "right_channel_ratio": float(right_ratio),
+            "event_count": float(len(passes)),
+        }
+        severity: Optional[Severity] = None
+        if abs(mean_dx) > 8 or right_ratio > 0.6:
+            severity = Severity.high
+        elif abs(mean_dx) > 5 or right_ratio > 0.5:
+            severity = Severity.medium
+        return (severity, metrics) if severity else None
 
-        if window_len >= 10 and count_high >= max(5, int(0.6 * window_len)):
-            return Severity.high
-        if window_len >= 10 and count_med >= max(6, int(0.4 * window_len)):
-            return Severity.medium
-        return None
+    def _detect_transition_risk(self, window: List[EventRecord]) -> Optional[Tuple[Severity, Dict[str, float]]]:
+        if not window:
+            return None
+        turnover_candidates = [
+            ev
+            for ev in window
+            if (ev.result_name or "").lower() == "unsuccessful"
+            or "turnover" in (ev.type_name or "").lower()
+        ]
+        if not turnover_candidates:
+            return None
+        last_turnover = max(turnover_candidates, key=lambda ev: ev.time_seconds)
+        followups = [
+            ev
+            for ev in window
+            if last_turnover.time_seconds < ev.time_seconds <= last_turnover.time_seconds + 8
+            and (ev.type_name.lower() == "shot" or (ev.end_x is not None and ev.end_x > 88))
+        ]
+        if not followups:
+            return None
+        metrics = {
+            "turnover_x": float(last_turnover.end_x or last_turnover.start_x or 0.0),
+            "followup_attack_count": float(len(followups)),
+        }
+        severity = Severity.high if len(followups) >= 2 else Severity.medium
+        return severity, metrics
 
-    def _evaluate_transition_risk(
-        self, metrics_window: List[Tuple[float, float, float]]
-    ) -> Tuple[Severity | None, float]:
-        if len(metrics_window) < 12:
-            return None, 0.0
-        intensities = [m[2] for m in metrics_window]
-        recent = intensities[-5:]
-        previous = intensities[:-5]
-        if not previous:
-            return None, 0.0
-        base_mean = float(np.mean(previous)) + 1e-6
-        recent_mean = float(np.mean(recent))
-        ratio = recent_mean / base_mean
-        if recent_mean < 0.02:
-            return None, ratio
-        if ratio > 3.0:
-            return Severity.high, ratio
-        if ratio > 2.0:
-            return Severity.medium, ratio
-        return None, ratio
+    def _detect_final_third_pressure(self, window: List[EventRecord]) -> Optional[Tuple[Severity, Dict[str, float]]]:
+        entries = [ev for ev in window if ev.end_x is not None and ev.end_x > 70]
+        if len(entries) < 5:
+            return None
+        metrics = {"final_third_entries": float(len(entries))}
+        severity = Severity.high if len(entries) >= 10 else Severity.medium
+        return severity, metrics
+
+    def _events_for_evidence(self, window: List[EventRecord], ts: float) -> List[EventRecord]:
+        return [ev for ev in window if abs(ev.time_seconds - ts) <= 5]
+
+    def _should_emit(self, state: SessionState, pattern_type: str, ts: float, cooldown: float = 8.0) -> bool:
+        last_ts = state.last_pattern_ts.get(pattern_type)
+        if last_ts is None:
+            return True
+        return (ts - last_ts) >= cooldown
 
     def _create_alert(
         self,
@@ -284,31 +354,31 @@ class SessionManager:
         pattern_type: str,
         severity: Severity,
         metrics: Dict[str, float],
+        events_slice: List[EventRecord],
     ) -> Alert:
         alert_id = str(uuid.uuid4())
         clip_url, overlay_url = evidence_builder.build_evidence(
             session_id=session_id,
             alert_id=alert_id,
-            video_path=self._sessions[session_id].session.source_uri,
             ts_center=ts,
             pattern_type=pattern_type,
             severity=severity.value,
             metrics=metrics,
+            events=events_slice,
         )
-        evidence_metrics = {
-            key: EvidenceMetric(name=key, value=value) for key, value in metrics.items()
-        }
-        claim = "최근 전개가 우측으로 치우치고 있습니다." if pattern_type == "build_up_bias" else "전환 속도가 급격히 증가하고 있습니다."
-        recommendation = (
-            "좌측 혹은 중앙 전환을 섞어 압박 균형을 무너뜨리세요."
-            if pattern_type == "build_up_bias"
-            else "급격한 전환 구간에서 안정적으로 볼을 순환하세요."
-        )
-        risk = (
-            "우측에서 볼을 잃을 시 역습 위험이 높습니다."
-            if pattern_type == "build_up_bias"
-            else "지속적인 전환 압박으로 인한 실점 위험이 있습니다."
-        )
+        evidence_metrics = {key: EvidenceMetric(name=key, value=value) for key, value in metrics.items()}
+        if pattern_type == "build_up_bias":
+            claim = "최근 전개가 우측으로 치우치고 있습니다."
+            recommendation = "좌측 혹은 중앙 전환을 섞어 압박 균형을 무너뜨리세요."
+            risk = "우측에서 볼을 잃을 시 역습 위험이 높습니다."
+        elif pattern_type == "transition_risk":
+            claim = "턴오버 직후 전환 압박이 증가했습니다."
+            recommendation = "턴오버 직후 안정화 패턴을 가동해 위험 구간을 줄이세요."
+            risk = "지속적인 전환 압박으로 인한 실점 위험이 있습니다."
+        else:
+            claim = "상대가 파이널 서드 진입을 반복하고 있습니다."
+            recommendation = "박스 근처 압박 라인을 재정렬해 진입 빈도를 낮추세요."
+            risk = "박스 부근 진입이 누적되면 실점 확률이 높아집니다."
 
         return Alert(
             id=alert_id,

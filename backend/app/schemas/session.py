@@ -9,6 +9,7 @@ class SessionSourceType(str, Enum):
     file = "file"
     rtsp = "rtsp"
     webcam = "webcam"
+    event_log = "event_log"
 
 
 class SessionMode(str, Enum):
@@ -60,9 +61,12 @@ class SessionCreateRequest(BaseModel):
     fps: int = Field(default=25, ge=1, le=60)
     buffer_ms: Optional[int] = Field(default=300, ge=0)
     path: Optional[str] = None
+    dataset_path: Optional[str] = None
     rtsp_url: Optional[str] = None
     device_id: Optional[int] = Field(default=0, ge=0)
     file_id: Optional[str] = None
+    game_id: Optional[str] = None
+    playback_speed: float = Field(default=5.0, gt=0, le=60)
 
 
 class Session(BaseModel):
@@ -75,6 +79,7 @@ class Session(BaseModel):
     source_uri: str
     buffer_ms: Optional[int] = None
     download_url: Optional[str] = None
+    game_id: Optional[str] = None
 
 
 class SessionStatusEvent(BaseModel):
