@@ -1,0 +1,25 @@
+# OS / editor artifacts
+.DS_Store
+.env
+.env.local
+.env.production
+.env.development
+
+# Python
+__pycache__/
+*.pyc
+
+# Node / frontend
+node_modules/
+.next/
+
+# Build / storage
+# Build / storage
+storage/
+*.log
+00_data/Track2/*.csv
+00_data/Track2/*.xlsx
+
+# IDE
+.vscode/
+.idea/
