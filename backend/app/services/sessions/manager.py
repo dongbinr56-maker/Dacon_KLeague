@@ -41,6 +41,7 @@ class SessionManager:
     def __init__(self) -> None:
         self._sessions: Dict[str, SessionState] = {}
         self._lock = asyncio.Lock()
+        self._settings = get_settings()
 
     async def create_session(self, payload: SessionCreateRequest) -> Session:
         async with self._lock:
@@ -215,7 +216,7 @@ class SessionManager:
         if build_up:
             severity, metrics = build_up
             if self._should_emit(state, "build_up_bias", ts):
-                alert = self._create_alert(
+                alert = self._try_create_alert(
                     session_id=state.session.id,
                     ts=ts,
                     pattern_type="build_up_bias",
@@ -223,16 +224,17 @@ class SessionManager:
                     metrics=metrics,
                     events_slice=self._events_for_evidence(window, ts),
                 )
-                state.alerts.append(alert)
-                state.last_pattern_ts["build_up_bias"] = ts
-                patterns_triggered = True
-                await self._push_status(state, SessionStatus.running, "build_up_bias alert generated")
+                if alert:
+                    state.alerts.append(alert)
+                    state.last_pattern_ts["build_up_bias"] = ts
+                    patterns_triggered = True
+                    await self._push_status(state, SessionStatus.running, "build_up_bias alert generated")
 
         transition = self._detect_transition_risk(window)
         if transition:
             severity, metrics = transition
             if self._should_emit(state, "transition_risk", ts):
-                alert = self._create_alert(
+                alert = self._try_create_alert(
                     session_id=state.session.id,
                     ts=ts,
                     pattern_type="transition_risk",
@@ -240,16 +242,17 @@ class SessionManager:
                     metrics=metrics,
                     events_slice=self._events_for_evidence(window, ts),
                 )
-                state.alerts.append(alert)
-                state.last_pattern_ts["transition_risk"] = ts
-                patterns_triggered = True
-                await self._push_status(state, SessionStatus.running, "transition_risk alert generated")
+                if alert:
+                    state.alerts.append(alert)
+                    state.last_pattern_ts["transition_risk"] = ts
+                    patterns_triggered = True
+                    await self._push_status(state, SessionStatus.running, "transition_risk alert generated")
 
         pressure = self._detect_final_third_pressure(window)
         if pressure:
             severity, metrics = pressure
             if self._should_emit(state, "final_third_pressure", ts):
-                alert = self._create_alert(
+                alert = self._try_create_alert(
                     session_id=state.session.id,
                     ts=ts,
                     pattern_type="final_third_pressure",
@@ -257,23 +260,29 @@ class SessionManager:
                     metrics=metrics,
                     events_slice=self._events_for_evidence(window, ts),
                 )
-                state.alerts.append(alert)
-                state.last_pattern_ts["final_third_pressure"] = ts
-                patterns_triggered = True
+                if alert:
+                    state.alerts.append(alert)
+                    state.last_pattern_ts["final_third_pressure"] = ts
+                    patterns_triggered = True
                 await self._push_status(state, SessionStatus.running, "final_third_pressure alert generated")
 
         if not patterns_triggered and ts >= 30 and not state.alerts and window:
-            alert = self._create_alert(
+            if self._settings.demo_mode:
+                metrics = self._demo_metrics(window)
+            else:
+                metrics = {"event_count": float(len(window))}
+            alert = self._try_create_alert(
                 session_id=state.session.id,
                 ts=ts,
                 pattern_type="build_up_bias",
                 severity=Severity.medium,
-                metrics={"event_count": float(len(window))},
+                metrics=metrics,
                 events_slice=self._events_for_evidence(window, ts),
             )
-            state.alerts.append(alert)
-            state.last_pattern_ts["build_up_bias"] = ts
-            await self._push_status(state, SessionStatus.running, "fallback alert generated")
+            if alert:
+                state.alerts.append(alert)
+                state.last_pattern_ts["build_up_bias"] = ts
+                await self._push_status(state, SessionStatus.running, "fallback alert generated")
 
     def _detect_build_up_bias(self, window: List[EventRecord]) -> Optional[Tuple[Severity, Dict[str, float]]]:
         passes = [
@@ -347,7 +356,19 @@ class SessionManager:
             return True
         return (ts - last_ts) >= cooldown
 
-    def _create_alert(
+    def _demo_metrics(self, window: List[EventRecord]) -> Dict[str, float]:
+        dx = [ev.end_x - ev.start_x for ev in window if ev.start_x is not None and ev.end_x is not None]
+        mean_dx = float(sum(dx) / len(dx)) if dx else 0.0
+        right_entries = [ev for ev in window if ev.end_x and ev.end_x > 70]
+        shots = [ev for ev in window if (ev.type_name or "").lower() == "shot"]
+        return {
+            "event_count": float(len(window)),
+            "mean_dx": mean_dx,
+            "final_third_entries": float(len(right_entries)),
+            "shot_count": float(len(shots)),
+        }
+
+    def _try_create_alert(
         self,
         session_id: str,
         ts: float,
@@ -355,17 +376,22 @@ class SessionManager:
         severity: Severity,
         metrics: Dict[str, float],
         events_slice: List[EventRecord],
-    ) -> Alert:
+    ) -> Alert | None:
         alert_id = str(uuid.uuid4())
-        clip_url, overlay_url = evidence_builder.build_evidence(
-            session_id=session_id,
-            alert_id=alert_id,
-            ts_center=ts,
-            pattern_type=pattern_type,
-            severity=severity.value,
-            metrics=metrics,
-            events=events_slice,
-        )
+        try:
+            clip_url, overlay_url = evidence_builder.build_evidence(
+                session_id=session_id,
+                alert_id=alert_id,
+                ts_center=ts,
+                pattern_type=pattern_type,
+                severity=severity.value,
+                metrics=metrics,
+                events=events_slice,
+            )
+        except Exception as exc:  # noqa: BLE001 - defensive path to avoid publishing without evidence
+            detail = f"evidence_generation_failed: {exc}"
+            asyncio.create_task(self._push_status(self._sessions[session_id], SessionStatus.running, detail))
+            return None
         evidence_metrics = {key: EvidenceMetric(name=key, value=value) for key, value in metrics.items()}
         if pattern_type == "build_up_bias":
             claim = "최근 전개가 우측으로 치우치고 있습니다."

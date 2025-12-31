@@ -46,6 +46,8 @@ class EvidenceBuilder:
 
         clip_url = f"{self.api_prefix}/evidence/{session_id}/clip_{alert_id}.mp4"
         overlay_url = f"{self.api_prefix}/evidence/{session_id}/overlay_{alert_id}.png"
+
+        self._assert_exists(clip_path, overlay_path)
         return clip_url, overlay_url
 
     def _render_clip(self, events: List[EventRecord], start_ts: float, end_ts: float, output_path: str) -> None:
@@ -65,6 +67,9 @@ class EvidenceBuilder:
                     self._draw_event(frame, ev)
             writer.write(frame)
         writer.release()
+
+        if not os.path.exists(output_path):
+            raise RuntimeError(f"Failed to render clip to {output_path}")
 
     def _render_overlay(
         self,
@@ -118,6 +123,9 @@ class EvidenceBuilder:
             (255, 255, 255),
             2,
         )
+        # Final third lines for visual risk emphasis
+        x_final_third = int((70 / PITCH_LENGTH) * FRAME_WIDTH)
+        cv2.line(frame, (x_final_third, 0), (x_final_third, FRAME_HEIGHT), (200, 200, 200), 1)
         return frame
 
     def _draw_event(self, frame: np.ndarray, event: EventRecord) -> None:
@@ -150,6 +158,13 @@ class EvidenceBuilder:
         if "turnover" in type_name or (event.result_name or "").lower() == "unsuccessful":
             return (180, 180, 180)
         return (255, 255, 0)
+
+    def _assert_exists(self, clip_path: str, overlay_path: str) -> None:
+        for path in (clip_path, overlay_path):
+            if not os.path.exists(path):
+                raise RuntimeError(f"Evidence file missing: {path}")
+            if os.path.getsize(path) <= 0:
+                raise RuntimeError(f"Evidence file empty: {path}")
 
 
 evidence_builder = EvidenceBuilder()

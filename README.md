@@ -30,6 +30,10 @@ Track2 이벤트 로그(`00_data/Track2/raw_data.csv`)를 기본 입력으로 �
 ## 데이터/재현성
 - Track2가 기본 입력이며, 외부 데이터는 필요하지 않습니다.
 - 데이터 경로 기본값은 `backend/app/core/config.py`에 정의되어 있으며 ENV로 덮어쓸 수 있습니다.
+- 외부 데이터를 추가로 쓸 경우 **무료/재현 가능/라이선스 명시** + 수집 스크립트를 `docs/external_data.md`에 기록해야 합니다.
+
+## 스모크 테스트
+- `scripts/smoke_demo.sh`를 실행하면 health → game_id 조회 → 세션 생성/시작 → 60초 이내 alert 확인 → evidence mp4/png 다운로드까지 자동 검증합니다.
 
 ## 문서
 - `docs/ARCHITECTURE.md` : 전체 아키텍처 개요
