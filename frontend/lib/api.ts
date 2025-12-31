@@ -33,14 +33,17 @@ export interface UploadResponse {
 }
 
 export interface SessionPayload {
-  source_type: "file" | "rtsp" | "webcam";
+  source_type: "file" | "rtsp" | "webcam" | "event_log";
   mode: "offline_realtime" | "live";
   fps?: number;
   buffer_ms?: number;
   file_id?: string;
   path?: string;
+  dataset_path?: string;
   rtsp_url?: string;
   device_id?: number;
+  game_id?: string;
+  playback_speed?: number;
 }
 
 export interface Session {
@@ -52,6 +55,7 @@ export interface Session {
   source_uri: string;
   buffer_ms?: number | null;
   download_url?: string | null;
+  game_id?: string | null;
 }
 
 export async function uploadVideo(file: File): Promise<UploadResponse> {
@@ -99,5 +103,19 @@ export async function listSessions() {
 export async function getAlerts(sessionId: string): Promise<{ alerts: Alert[] }> {
   const res = await fetch(`${apiBase}/sessions/${sessionId}/alerts`);
   if (!res.ok) throw new Error("Failed to fetch alerts");
+  return res.json();
+}
+
+export interface Track2Game {
+  game_id: string;
+  home_team?: string;
+  away_team?: string;
+  match_date?: string;
+  stadium?: string;
+}
+
+export async function listGames(): Promise<{ games: Track2Game[] }> {
+  const res = await fetch(`${apiBase}/track2/games`);
+  if (!res.ok) throw new Error("Failed to load Track2 games");
   return res.json();
 }
