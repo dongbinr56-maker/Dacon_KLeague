@@ -5,6 +5,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
+import numpy as np
+import pandas as pd
+
 from app.core.config import get_settings
 from app.schemas.event import EventRecord
 from app.schemas.session import (
@@ -20,6 +23,7 @@ from app.schemas.session import (
     SessionStatusEvent,
     Severity,
 )
+from app.services.alerts.will_have_shot import get_will_have_shot_predictor
 from app.services.evidence.builder import get_evidence_builder
 from app.services.ingest.base import IngestSource
 from app.services.ingest.factory import ingest_factory
@@ -266,6 +270,35 @@ class SessionManager:
                     patterns_triggered = True
                 await self._push_status(state, SessionStatus.running, "final_third_pressure alert generated")
 
+        # ML 모델 예측 (will_have_shot)
+        predictor = get_will_have_shot_predictor()
+        if predictor.is_active and len(window) > 0:
+            try:
+                features = self._extract_features_for_ml(window)
+                proba = predictor.predict_proba(features)
+                if proba is not None and predictor.should_alert(proba):
+                    if self._should_emit(state, "will_have_shot", ts, cooldown=15.0):
+                        metrics = {
+                            "shot_probability": proba,
+                            "lead_time_seconds": 10.0,
+                        }
+                        alert = self._try_create_alert(
+                            session_id=state.session.id,
+                            ts=ts,
+                            pattern_type="will_have_shot",
+                            severity=Severity.high,
+                            metrics=metrics,
+                            events_slice=self._events_for_evidence(window, ts),
+                        )
+                        if alert:
+                            state.alerts.append(alert)
+                            state.last_pattern_ts["will_have_shot"] = ts
+                            patterns_triggered = True
+                            await self._push_status(state, SessionStatus.running, f"will_have_shot alert generated (prob={proba:.3f})")
+            except Exception as e:
+                # ML 예측 실패해도 서비스는 계속 동작
+                print(f"WillHaveShotPredictor: Error during prediction: {e}")
+
         if not patterns_triggered and ts >= 30 and not state.alerts and window:
             if self._settings.demo_mode:
                 metrics = self._demo_metrics(window)
@@ -356,6 +389,160 @@ class SessionManager:
             return True
         return (ts - last_ts) >= cooldown
 
+    def _extract_features_for_ml(self, window: List[EventRecord]) -> Dict[str, float]:
+        """이벤트 윈도우에서 ML 모델용 피처 추출"""
+        if not window:
+            return self._empty_ml_features()
+        
+        # EventRecord 리스트를 DataFrame으로 변환
+        events_data = []
+        for ev in window:
+            events_data.append({
+                "time_seconds": ev.time_seconds,
+                "type_name": ev.type_name or "",
+                "result_name": ev.result_name or "",
+                "start_x": ev.start_x,
+                "start_y": ev.start_y,
+                "end_x": ev.end_x,
+                "end_y": ev.end_y,
+                "dx": ev.dx,
+                "dy": ev.dy,
+                "team_id": ev.team_id,
+            })
+        events = pd.DataFrame(events_data)
+        
+        features = {}
+        
+        # 1. 기본 통계
+        features["event_count"] = float(len(events))
+        time_span = float(events["time_seconds"].max() - events["time_seconds"].min())
+        features["time_span"] = time_span if time_span > 0 else 0.0
+        features["event_rate"] = features["event_count"] / features["time_span"] if features["time_span"] > 0 else 0.0
+        
+        # 2. 이벤트 타입별 카운트
+        type_counts = events["type_name"].value_counts()
+        features["pass_count"] = float(type_counts.get("Pass", 0))
+        features["carry_count"] = float(type_counts.get("Carry", 0))
+        features["shot_count"] = float(type_counts.get("Shot", 0))
+        features["duel_count"] = float(type_counts.get("Duel", 0))
+        features["interception_count"] = float(type_counts.get("Interception", 0))
+        
+        # EDA 상위 타입들도 자동 추가
+        top_types = type_counts.head(10).index.tolist()
+        for t in top_types:
+            if t not in ["Pass", "Carry", "Shot", "Duel", "Interception"]:
+                features[f"type_{t.lower().replace(' ', '_')}_count"] = float(type_counts.get(t, 0))
+        
+        # 3. result_name 기반
+        result_counts = events["result_name"].value_counts()
+        features["successful_count"] = float(result_counts.get("Successful", 0))
+        features["unsuccessful_count"] = float(result_counts.get("Unsuccessful", 0))
+        features["unknown_result_count"] = float(
+            (events["result_name"].isna() | (events["result_name"] == "")).sum()
+        )
+        total_with_result = features["successful_count"] + features["unsuccessful_count"]
+        features["success_rate"] = (
+            features["successful_count"] / total_with_result if total_with_result > 0 else 0.0
+        )
+        features["success_rate_with_unknown"] = (
+            features["successful_count"] / features["event_count"] if features["event_count"] > 0 else 0.0
+        )
+        
+        # 4. 패스/이동 공간 피처
+        passes = events[
+            (events["type_name"] == "Pass")
+            & events["start_x"].notna()
+            & events["end_x"].notna()
+        ].copy()
+        
+        if len(passes) > 0:
+            # dx, dy 계산
+            if "dx" in passes.columns and passes["dx"].notna().any():
+                dx_list = passes["dx"].dropna().tolist()
+            else:
+                dx_list = (passes["end_x"] - passes["start_x"]).dropna().tolist()
+            
+            if "dy" in passes.columns and passes["dy"].notna().any():
+                dy_list = passes["dy"].dropna().tolist()
+            else:
+                dy_list = (passes["end_y"] - passes["start_y"]).dropna().tolist()
+            
+            features["mean_dx"] = float(np.mean(dx_list)) if dx_list else 0.0
+            features["mean_dy"] = float(np.mean(dy_list)) if dy_list else 0.0
+            features["std_dx"] = float(np.std(dx_list)) if dx_list else 0.0
+            features["std_dy"] = float(np.std(dy_list)) if dy_list else 0.0
+            features["forward_ratio"] = (
+                sum(1 for d in dx_list if d > 0) / len(dx_list) if dx_list else 0.0
+            )
+            
+            # 채널 분포 (y 좌표 기준, 0~68 스케일)
+            if passes["start_y"].notna().any():
+                right = (passes["start_y"] > 45.3).sum()
+                left = (passes["start_y"] < 22.7).sum()
+                total = len(passes)
+                features["right_ratio"] = right / total if total > 0 else 0.0
+                features["left_ratio"] = left / total if total > 0 else 0.0
+                features["center_ratio"] = 1.0 - features["right_ratio"] - features["left_ratio"]
+            else:
+                features["right_ratio"] = 0.0
+                features["left_ratio"] = 0.0
+                features["center_ratio"] = 0.0
+        else:
+            features["mean_dx"] = 0.0
+            features["mean_dy"] = 0.0
+            features["std_dx"] = 0.0
+            features["std_dy"] = 0.0
+            features["forward_ratio"] = 0.0
+            features["right_ratio"] = 0.0
+            features["left_ratio"] = 0.0
+            features["center_ratio"] = 0.0
+        
+        # 5. 침투 지표
+        features["final_third_entries"] = float(
+            (events["end_x"].notna() & (events["end_x"] > 70)).sum()
+        )
+        features["penalty_area_entries"] = float(
+            (events["end_x"].notna() & (events["end_x"] > 88)).sum()
+        )
+        
+        # 6. 볼 소유 변화
+        if "team_id" in events.columns and events["team_id"].notna().any():
+            team_changes = (events["team_id"].diff() != 0).sum() - 1
+            features["possession_changes"] = float(max(0, team_changes))
+        else:
+            features["possession_changes"] = 0.0
+        
+        return features
+    
+    def _empty_ml_features(self) -> Dict[str, float]:
+        """빈 윈도우용 기본 피처"""
+        return {
+            "event_count": 0.0,
+            "time_span": 0.0,
+            "event_rate": 0.0,
+            "pass_count": 0.0,
+            "carry_count": 0.0,
+            "shot_count": 0.0,
+            "duel_count": 0.0,
+            "interception_count": 0.0,
+            "successful_count": 0.0,
+            "unsuccessful_count": 0.0,
+            "unknown_result_count": 0.0,
+            "success_rate": 0.0,
+            "success_rate_with_unknown": 0.0,
+            "mean_dx": 0.0,
+            "mean_dy": 0.0,
+            "std_dx": 0.0,
+            "std_dy": 0.0,
+            "forward_ratio": 0.0,
+            "right_ratio": 0.0,
+            "left_ratio": 0.0,
+            "center_ratio": 0.0,
+            "final_third_entries": 0.0,
+            "penalty_area_entries": 0.0,
+            "possession_changes": 0.0,
+        }
+
     def _demo_metrics(self, window: List[EventRecord]) -> Dict[str, float]:
         dx = [ev.end_x - ev.start_x for ev in window if ev.start_x is not None and ev.end_x is not None]
         mean_dx = float(sum(dx) / len(dx)) if dx else 0.0
@@ -402,6 +589,12 @@ class SessionManager:
             claim = "턴오버 직후 전환 압박이 증가했습니다."
             recommendation = "턴오버 직후 안정화 패턴을 가동해 위험 구간을 줄이세요."
             risk = "지속적인 전환 압박으로 인한 실점 위험이 있습니다."
+        elif pattern_type == "will_have_shot":
+            prob = metrics.get("shot_probability", 0.0)
+            lead_time = metrics.get("lead_time_seconds", 10.0)
+            claim = f"AI 모델이 {lead_time:.0f}초 내 슈팅 발생 가능성을 {prob*100:.1f}%로 예측했습니다."
+            recommendation = "수비 라인을 긴급히 재정렬하고 골키퍼를 대비하세요."
+            risk = "슈팅 발생 시 실점 위험이 높습니다."
         else:
             claim = "상대가 파이널 서드 진입을 반복하고 있습니다."
             recommendation = "박스 근처 압박 라인을 재정렬해 진입 빈도를 낮추세요."

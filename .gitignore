@@ -22,6 +22,10 @@ storage/
 # ML artifacts
 artifacts/
 
+# EDA results (keep summary, ignore large outputs)
+EDA/*.csv
+EDA/*.xlsx
+
 # IDE
 .vscode/
 .idea/

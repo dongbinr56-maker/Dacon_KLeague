@@ -35,28 +35,33 @@ def load_track2_data(csv_path: str) -> pd.DataFrame:
 def analyze_type_name(df: pd.DataFrame) -> dict:
     """type_name 고유값 및 빈도 분석"""
     type_counts = df["type_name"].value_counts()
+    top_30_dict = type_counts.head(30).to_dict()
+    # numpy 타입을 Python 기본 타입으로 변환
+    top_30_dict = {k: int(v) for k, v in top_30_dict.items()}
     return {
-        "unique_count": df["type_name"].nunique(),
-        "top_30": type_counts.head(30).to_dict(),
-        "total_events": len(df),
+        "unique_count": int(df["type_name"].nunique()),
+        "top_30": top_30_dict,
+        "total_events": int(len(df)),
     }
 
 
 def analyze_result_name(df: pd.DataFrame) -> dict:
     """result_name 분포 및 type_name별 교차표"""
     result_dist = df["result_name"].value_counts()
+    result_dict = {k: int(v) for k, v in result_dist.to_dict().items()}
     
     # type_name별 result_name 교차표 (Top 10 type_name만)
     top_types = df["type_name"].value_counts().head(10).index
     cross_tab = {}
     for t in top_types:
         subset = df[df["type_name"] == t]
-        cross_tab[t] = subset["result_name"].value_counts().to_dict()
+        cross_dict = subset["result_name"].value_counts().to_dict()
+        cross_tab[t] = {k: int(v) for k, v in cross_dict.items()}
     
     return {
-        "distribution": result_dist.to_dict(),
-        "empty_string_count": (df["result_name"] == "").sum(),
-        "null_count": df["result_name"].isna().sum(),
+        "distribution": result_dict,
+        "empty_string_count": int((df["result_name"] == "").sum()),
+        "null_count": int(df["result_name"].isna().sum()),
         "top_10_type_cross_tab": cross_tab,
     }
 
@@ -97,13 +102,15 @@ def analyze_team_id(df: pd.DataFrame) -> dict:
     # game_id별 team_id 고유 개수
     if "team_id" in df.columns and "game_id" in df.columns:
         game_teams = df.groupby("game_id")["team_id"].nunique()
+        team_dist_dict = game_teams.value_counts().to_dict()
+        team_dist_dict = {int(k): int(v) for k, v in team_dist_dict.items()}
         result = {
             "missing_rate": float(missing_rate),
             "games_with_2_teams": int((game_teams == 2).sum()),
             "games_with_1_team": int((game_teams == 1).sum()),
             "games_with_other": int((game_teams > 2).sum()),
             "total_games": int(game_teams.count()),
-            "team_id_distribution": game_teams.value_counts().to_dict(),
+            "team_id_distribution": team_dist_dict,
         }
     else:
         result = {
@@ -136,7 +143,8 @@ def analyze_shots(df: pd.DataFrame) -> dict:
     # period_id별 Shot 분포
     period_dist = {}
     if "period_id" in shots.columns:
-        period_dist = shots["period_id"].value_counts().to_dict()
+        period_dict = shots["period_id"].value_counts().to_dict()
+        period_dist = {int(k): int(v) for k, v in period_dict.items()}
     
     # 시간 분포 (time_seconds)
     if "time_seconds" in shots.columns:
@@ -151,7 +159,7 @@ def analyze_shots(df: pd.DataFrame) -> dict:
     return {
         "total_shots": int(len(shots)),
         "total_games": int(total_games),
-        "avg_shots_per_game": float(avg_shots_per_game),
+        "avg_shots_per_game": float(avg_shots_per_game) if isinstance(avg_shots_per_game, (int, float)) else 0.0,
         "period_distribution": period_dist,
         "time_statistics": time_stats,
     }
@@ -296,17 +304,17 @@ def main():
     }
     
     # 출력 디렉토리 생성
-    artifacts_dir = project_root / "artifacts"
-    artifacts_dir.mkdir(exist_ok=True)
+    eda_dir = project_root / "EDA"
+    eda_dir.mkdir(exist_ok=True)
     
     # JSON 저장
-    json_path = artifacts_dir / "eda_track2_summary.json"
+    json_path = eda_dir / "eda_track2_summary.json"
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
     print(f"\nSaved summary to: {json_path}")
     
     # 리포트 생성
-    report_path = artifacts_dir / "eda_track2_report.md"
+    report_path = eda_dir / "eda_track2_report.md"
     generate_report(summary, str(report_path))
     print(f"Saved report to: {report_path}")
     

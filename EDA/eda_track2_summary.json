@@ -1,0 +1,158 @@
+{
+  "type_name": {
+    "unique_count": 37,
+    "top_30": {
+      "Pass": 178582,
+      "Pass Received": 167531,
+      "Carry": 88739,
+      "Recovery": 29713,
+      "Interception": 13852,
+      "Out": 12136,
+      "Duel": 11244,
+      "Clearance": 9847,
+      "Tackle": 9498,
+      "Intervention": 8835,
+      "Throw-In": 7461,
+      "Block": 6881,
+      "Cross": 6163,
+      "Shot": 4381,
+      "Pass_Freekick": 4362,
+      "Foul": 4097,
+      "Goal Kick": 3030,
+      "Error": 2587,
+      "Ball Received": 1743,
+      "Pass_Corner": 1729,
+      "Take-On": 1456,
+      "Catch": 1109,
+      "Parry": 807,
+      "Aerial Clearance": 600,
+      "Hit": 581,
+      "Offside": 529,
+      "Goal": 515,
+      "Pause": 410,
+      "Defensive Line Support": 320,
+      "Handball_Foul": 152
+    },
+    "total_events": 579306
+  },
+  "result_name": {
+    "distribution": {
+      "Successful": 183372,
+      "Unsuccessful": 41073,
+      "Off Target": 1970,
+      "On Target": 1117,
+      "Blocked": 859,
+      "Yellow_Card": 640,
+      "Goal": 515,
+      "Low Quality Shot": 105,
+      "Direct_Red_Card": 22,
+      "Keeper Rush-Out": 18,
+      "Second_Yellow_Card": 11
+    },
+    "empty_string_count": 0,
+    "null_count": 349604,
+    "top_10_type_cross_tab": {
+      "Pass": {
+        "Successful": 154195,
+        "Unsuccessful": 24387
+      },
+      "Pass Received": {},
+      "Carry": {},
+      "Recovery": {},
+      "Interception": {},
+      "Out": {},
+      "Duel": {
+        "Successful": 11239,
+        "Unsuccessful": 5
+      },
+      "Clearance": {},
+      "Tackle": {
+        "Unsuccessful": 6517,
+        "Successful": 2981
+      },
+      "Intervention": {}
+    }
+  },
+  "coordinates": {
+    "start_x": {
+      "min": 0.0,
+      "max": 105.0,
+      "mean": 52.792476810646995,
+      "quantiles": {
+        "1%": 2.504871075,
+        "5%": 10.3818855,
+        "50%": 52.748535,
+        "95%": 95.140255875,
+        "99%": 102.66375
+      },
+      "missing_rate": 0.0,
+      "zero_count": 1705
+    },
+    "start_y": {
+      "min": 0.0,
+      "max": 68.0,
+      "mean": 34.38334596034134,
+      "quantiles": {
+        "1%": 0.0,
+        "5%": 2.5255114999999972,
+        "50%": 34.437988000000004,
+        "95%": 65.6744136,
+        "99%": 68.0
+      },
+      "missing_rate": 0.0,
+      "zero_count": 8350
+    },
+    "end_x": {
+      "min": 0.0,
+      "max": 105.0,
+      "mean": 52.799981074115294,
+      "quantiles": {
+        "1%": 1.5862507500000014,
+        "5%": 10.0373385,
+        "50%": 52.7912175,
+        "95%": 95.542125,
+        "99%": 103.7568593249999
+      },
+      "missing_rate": 0.0,
+      "zero_count": 3797
+    },
+    "end_y": {
+      "min": 0.0,
+      "max": 68.0,
+      "mean": 34.38885948286854,
+      "quantiles": {
+        "1%": 0.0,
+        "5%": 2.650164000000004,
+        "50%": 34.40783,
+        "95%": 65.56649759999999,
+        "99%": 68.0
+      },
+      "missing_rate": 0.0,
+      "zero_count": 6765
+    }
+  },
+  "team_id": {
+    "missing_rate": 0.0,
+    "games_with_2_teams": 198,
+    "games_with_1_team": 0,
+    "games_with_other": 0,
+    "total_games": 198,
+    "team_id_distribution": {
+      "2": 198
+    }
+  },
+  "shots": {
+    "total_shots": 4381,
+    "total_games": 198,
+    "avg_shots_per_game": 22.126262626262626,
+    "period_distribution": {
+      "2": 2601,
+      "1": 1780
+    },
+    "time_statistics": {
+      "min": 8.667,
+      "max": 3551.5,
+      "mean": 1638.4742844099521
+    }
+  }
+}
