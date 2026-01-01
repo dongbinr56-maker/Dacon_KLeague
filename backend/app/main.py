@@ -1,8 +1,11 @@
 import os
+import inspect
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import sessions, track2, uploads, ws
@@ -11,10 +14,23 @@ from app.services.data.track2 import validate_track2_data
 
 settings = get_settings()
 
-app = FastAPI(title=settings.app_name)
+track2_validation: Dict[str, str] = {}
+track2_error: Optional[str] = None
+try:  # pragma: no cover - startup validation
+    track2_validation = validate_track2_data()
+except Exception as exc:  # noqa: BLE001
+    track2_error = str(exc)
 
-os.makedirs(settings.storage_path, exist_ok=True)
-os.makedirs(settings.evidence_path, exist_ok=True)
+STATIC_DEMO_DIR = Path(__file__).resolve().parent / "static" / "demo"
+
+
+async def lifespan(app: FastAPI):  # pragma: no cover - runtime path
+    os.makedirs(settings.storage_path, exist_ok=True)
+    os.makedirs(settings.evidence_path, exist_ok=True)
+    yield
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,55 +40,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-track2_validation: Dict[str, str] = {}
-track2_error: Optional[str] = None
-try:  # pragma: no cover - startup validation
-    track2_validation = validate_track2_data()
-except Exception as exc:  # noqa: BLE001
-    track2_error = str(exc)
-
 
 @app.get("/")
 async def root():
     return {"message": "KLeague tactical feedback backend", "service": settings.app_name}
 
+
+static_kwargs: Dict[str, Any] = {}
+if "check_dir" in inspect.signature(StaticFiles).parameters:
+    static_kwargs["check_dir"] = False
+
 app.mount(
     f"{settings.api_prefix}/evidence",
-    StaticFiles(directory=settings.evidence_path),
+    StaticFiles(directory=settings.evidence_path, **static_kwargs),
     name="evidence",
 )
 
 
-@app.get(f"{settings.api_prefix}/health")
-async def health() -> Dict[str, Any]:
-    return {
-        "status": "ok" if track2_error is None else "degraded",
-        "track2": track2_validation,
-        "track2_error": track2_error,
-    }
+@app.get("/demo", include_in_schema=False)
+@app.get("/demo/", include_in_schema=False)
+async def demo_entrypoint() -> Any:
+    index_path = STATIC_DEMO_DIR / "index.html"
+    return FileResponse(index_path)
 
 
 app.mount(
-    f"{settings.api_prefix}/evidence",
-    StaticFiles(directory=settings.evidence_path),
-    name="evidence",
-)
-
-
-@app.get(f"{settings.api_prefix}/health")
-async def health() -> Dict[str, Any]:
-    return {
-        "status": "ok" if track2_error is None else "degraded",
-        "track2": track2_validation,
-        "track2_error": track2_error,
-        "demo_mode": settings.demo_mode,
-    }
-
-
-app.mount(
-    f"{settings.api_prefix}/evidence",
-    StaticFiles(directory=settings.evidence_path),
-    name="evidence",
+    "/demo",
+    StaticFiles(directory=STATIC_DEMO_DIR, html=True),
+    name="demo",
 )
 
 
@@ -84,47 +79,6 @@ async def health() -> Dict[str, Any]:
         "track2_error": track2_error,
         "demo_mode": settings.demo_mode,
     }
-
-
-app.mount(
-    f"{settings.api_prefix}/evidence",
-    StaticFiles(directory=settings.evidence_path),
-    name="evidence",
-)
-
-
-@app.get(f"{settings.api_prefix}/health")
-async def health() -> Dict[str, Any]:
-    return {
-        "status": "ok" if track2_error is None else "degraded",
-        "track2": track2_validation,
-        "track2_error": track2_error,
-        "demo_mode": settings.demo_mode,
-    }
-
-
-app.mount(
-    f"{settings.api_prefix}/evidence",
-    StaticFiles(directory=settings.evidence_path),
-    name="evidence",
-)
-
-
-@app.get(f"{settings.api_prefix}/health")
-async def health() -> Dict[str, Any]:
-    return {
-        "status": "ok" if track2_error is None else "degraded",
-        "track2": track2_validation,
-        "track2_error": track2_error,
-        "demo_mode": settings.demo_mode,
-    }
-
-
-app.mount(
-    f"{settings.api_prefix}/evidence",
-    StaticFiles(directory=settings.evidence_path),
-    name="evidence",
-)
 
 
 app.include_router(sessions.router, prefix=f"{settings.api_prefix}/sessions", tags=["sessions"])
