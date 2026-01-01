@@ -16,6 +16,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import (
     GradientBoostingClassifier,
@@ -52,10 +53,12 @@ def load_dataset(dataset_path: str) -> pd.DataFrame:
     if not os.path.exists(dataset_path):
         raise FileNotFoundError(f"Dataset file not found: {dataset_path}")
     
-    if dataset_path.endswith(".parquet"):
-        df = pd.read_parquet(dataset_path)
-    else:
-        df = pd.read_csv(dataset_path)
+    with tqdm(total=1, desc="Loading dataset", unit="file") as pbar:
+        if dataset_path.endswith(".parquet"):
+            df = pd.read_parquet(dataset_path)
+        else:
+            df = pd.read_csv(dataset_path)
+        pbar.update(1)
     
     print(f"Loaded {len(df):,} samples")
     return df
@@ -112,7 +115,9 @@ def train_models(
     # 1. LogisticRegression (표준화 필요)
     print("\nTraining LogisticRegression...")
     scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
+    with tqdm(total=1, desc="  Scaling features", unit="step") as pbar:
+        X_train_scaled = scaler.fit_transform(X_train)
+        pbar.update(1)
     
     if tune_hyperparams and groups is not None:
         print("  Tuning hyperparameters...")
@@ -130,9 +135,13 @@ def train_models(
             cv=cv,
             scoring=pr_auc_scorer,
             n_jobs=-1,
-            verbose=1,
+            verbose=0,  # tqdm과 충돌 방지
         )
-        grid_search.fit(X_train_scaled, y_train, groups=groups)
+        # GridSearchCV 진행 표시
+        total_combinations = len(param_grid["C"]) * len(param_grid["solver"]) * len(param_grid["class_weight"])
+        with tqdm(total=total_combinations * 3, desc="  GridSearchCV", unit="fold") as pbar:
+            grid_search.fit(X_train_scaled, y_train, groups=groups)
+            pbar.update(total_combinations * 3)
         lr = grid_search.best_estimator_
         print(f"  Best params: {grid_search.best_params_}")
         print(f"  Best CV score (PR-AUC): {grid_search.best_score_:.4f}")
@@ -142,7 +151,9 @@ def train_models(
             max_iter=1000,
             random_state=42,
         )
-        lr.fit(X_train_scaled, y_train)
+        with tqdm(total=1, desc="  Training", unit="model") as pbar:
+            lr.fit(X_train_scaled, y_train)
+            pbar.update(1)
     
     models["logistic_regression"] = {
         "model": lr,
@@ -171,9 +182,12 @@ def train_models(
             scoring=pr_auc_scorer,
             n_jobs=-1,
             random_state=42,
-            verbose=1,
+            verbose=0,  # tqdm과 충돌 방지
         )
-        random_search.fit(X_train, y_train, groups=groups)
+        # RandomizedSearchCV 진행 표시
+        with tqdm(total=20 * 3, desc="  RandomizedSearchCV", unit="fold") as pbar:
+            random_search.fit(X_train, y_train, groups=groups)
+            pbar.update(20 * 3)
         hgb = random_search.best_estimator_
         print(f"  Best params: {random_search.best_params_}")
         print(f"  Best CV score (PR-AUC): {random_search.best_score_:.4f}")
@@ -184,7 +198,9 @@ def train_models(
             max_depth=5,
             random_state=42,
         )
-        hgb.fit(X_train, y_train)
+        with tqdm(total=1, desc="  Training", unit="model") as pbar:
+            hgb.fit(X_train, y_train)
+            pbar.update(1)
     
     models["hist_gradient_boosting"] = {
         "model": hgb,
@@ -324,7 +340,8 @@ def evaluate_model(
     
     # Threshold sweep (0.1 ~ 0.9, 0.05 간격)
     threshold_sweep = []
-    for thresh in np.arange(0.1, 0.95, 0.05):
+    thresholds = np.arange(0.1, 0.95, 0.05)
+    for thresh in tqdm(thresholds, desc="  Threshold sweep", unit="threshold"):
         y_pred = (y_val_pred_proba >= thresh).astype(int)
         if y_pred.sum() > 0:  # 최소 1개 이상 예측이 있을 때만
             sweep_metrics = {
@@ -487,11 +504,16 @@ def main():
     
     if best_model_dict["scaler"]:
         scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
-        best_model_dict["model"].fit(X_train_scaled, y_train)
+        with tqdm(total=2, desc="  Scaling & Training", unit="step") as pbar:
+            X_train_scaled = scaler.fit_transform(X_train)
+            pbar.update(1)
+            best_model_dict["model"].fit(X_train_scaled, y_train)
+            pbar.update(1)
         best_model_dict["scaler"] = scaler
     else:
-        best_model_dict["model"].fit(X_train, y_train)
+        with tqdm(total=1, desc="  Training", unit="model") as pbar:
+            best_model_dict["model"].fit(X_train, y_train)
+            pbar.update(1)
     
     # Test 평가
     test_metrics, test_f1_threshold, test_precision_threshold = evaluate_model(
