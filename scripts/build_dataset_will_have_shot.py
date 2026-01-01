@@ -127,9 +127,11 @@ def extract_features(events: pd.DataFrame) -> Dict[str, float]:
         features["left_ratio"] = 0.0
         features["center_ratio"] = 0.0
     
-    # 5. 침투 지표
+    # 5. 침투 지표 (x축 0~105 기준)
+    # final_third: 70 (=105×2/3)
+    # penalty_area: 88.5 (=105-16.5), 실무적으로 >88 사용
     features["final_third_entries"] = float(
-        (events["end_x"].notna() & (events["end_x"] > 70)).sum())
+        (events["end_x"].notna() & (events["end_x"] > 70)).sum()
     )
     features["penalty_area_entries"] = float(
         (events["end_x"].notna() & (events["end_x"] > 88)).sum()
