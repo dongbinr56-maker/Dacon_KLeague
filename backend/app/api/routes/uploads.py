@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 
 from app.core.config import get_settings
 from app.schemas.upload import UploadResponse
-from app.services.uploads.store import UploadItem, upload_store
+from app.services.uploads.store import UploadItem, get_upload_store
 
 router = APIRouter()
 settings = get_settings()
@@ -30,7 +30,7 @@ async def upload_video(file: UploadFile = File(...)) -> UploadResponse:
         filename=file.filename,
         size_bytes=len(content),
     )
-    upload_store.add(item)
+    get_upload_store().add(item)
 
     return UploadResponse(
         file_id=file_id,
@@ -43,7 +43,7 @@ async def upload_video(file: UploadFile = File(...)) -> UploadResponse:
 
 @router.get("/{file_id}")
 async def download_file(file_id: str) -> FileResponse:
-    item = upload_store.get(file_id)
+    item = get_upload_store().get(file_id)
     if not item:
         raise HTTPException(status_code=404, detail="file not found")
     if not os.path.exists(item.path):

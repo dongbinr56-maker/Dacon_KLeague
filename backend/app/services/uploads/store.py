@@ -52,7 +52,7 @@ class UploadStore:
         try:
             with open(self._index_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-        except FileNotFoundError:
+        except (FileNotFoundError, PermissionError):
             return
         except json.JSONDecodeError:  # pragma: no cover - defensive
             return
@@ -73,4 +73,11 @@ class UploadStore:
             json.dump(payload, f, ensure_ascii=False, indent=2)
 
 
-upload_store = UploadStore()
+_UPLOAD_STORE: UploadStore | None = None
+
+
+def get_upload_store() -> UploadStore:
+    global _UPLOAD_STORE
+    if _UPLOAD_STORE is None:
+        _UPLOAD_STORE = UploadStore()
+    return _UPLOAD_STORE

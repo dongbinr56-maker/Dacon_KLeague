@@ -19,10 +19,14 @@ function loadJson(file) {
 const pkg = loadJson(pkgPath);
 const lock = loadJson(lockPath);
 
+function exitWithMessage(message) {
+  console.error(message);
+  process.exit(1);
+}
+
 const rootLock = lock.packages && lock.packages[""];
 if (!rootLock) {
-  console.error("[lockfile-check] package-lock.json missing root packages entry");
-  process.exit(1);
+  exitWithMessage("[lockfile-check] package-lock.json missing root packages entry");
 }
 
 function diffDeps(depMap, lockMap, label) {
@@ -42,8 +46,13 @@ const missingDeps = diffDeps(pkg.dependencies, rootLock.dependencies, "dependenc
 const missingDevDeps = diffDeps(pkg.devDependencies, rootLock.devDependencies, "devDependencies");
 
 if (missingDeps.length || missingDevDeps.length) {
-  console.error("[lockfile-check] package-lock.json is out of sync with package.json. Run npm install in frontend/ and commit the updated lockfile.");
-  process.exit(1);
+  exitWithMessage("[lockfile-check] package-lock.json is out of sync with package.json. Run npm install in frontend/ and commit the updated lockfile.");
+}
+
+const packageEntries = lock.packages || {};
+const typesNodeEntry = packageEntries["node_modules/@types/node"] || packageEntries["vendor/@types/node"];
+if (!typesNodeEntry) {
+  exitWithMessage("[lockfile-check] @types/node is missing from package-lock.json packages. Re-install dev dependencies (npm install in frontend/) to restore the vendored copy.");
 }
 
 console.log("[lockfile-check] package-lock.json is in sync with package.json");
