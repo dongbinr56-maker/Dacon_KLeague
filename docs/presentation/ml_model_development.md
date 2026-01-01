@@ -247,6 +247,33 @@ ML 모델을 SessionManager에 통합하여 실시간 예측 및 알림 생성
 3. **평가 지표**: PR-AUC 우선, Precision≥0.6 목표
 4. **데이터 분할**: game_id 홀드아웃 필수
 5. **모델**: 1차는 2개만 (복잡도 최소화)
+6. **통합 방식**: Fallback 유지, 최소 침습, 에러 안전성
+
+---
+
+## 전체 진행 상황 요약
+
+### 완료된 Phase
+- ✅ **Phase 0**: 스키마 확장 및 버그 수정 (PR#1)
+- ✅ **Phase 1**: EDA 스크립트 및 분석 (PR#2)
+- ✅ **Phase 2**: 데이터셋 빌더 (PR#3)
+- ✅ **Phase 3**: 모델 학습 및 평가 (PR#4)
+- ✅ **Phase 4**: 백엔드 통합 (PR#5)
+- ✅ **Phase 5**: 프론트 표시 (PR#6)
+
+### 최종 결과
+- **데이터셋**: 122,656개 샘플 (양성 4.61%)
+- **모델**: LogisticRegression (Test PR-AUC: 0.0627)
+- **통합**: 백엔드 + 프론트 완료
+- **서비스**: 실시간 예측 및 알림 생성 가능
+
+### 산출물
+- `EDA/`: EDA 리포트 및 요약
+- `artifacts/will_have_shot_dataset.parquet`: 학습 데이터셋
+- `artifacts/will_have_shot_model.joblib`: 학습된 모델
+- `artifacts/will_have_shot_metrics.json`: 평가 지표
+- `backend/app/services/alerts/will_have_shot.py`: 예측기 모듈
+- `docs/presentation/ml_model_development.md`: 이 문서
 
 ---
 
