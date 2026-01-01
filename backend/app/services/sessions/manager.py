@@ -359,7 +359,7 @@ class SessionManager:
     def _demo_metrics(self, window: List[EventRecord]) -> Dict[str, float]:
         dx = [ev.end_x - ev.start_x for ev in window if ev.start_x is not None and ev.end_x is not None]
         mean_dx = float(sum(dx) / len(dx)) if dx else 0.0
-        right_entries = [ev for ev in window if ev.end_x and ev.end_x > 70]
+        right_entries = [ev for ev in window if ev.end_x is not None and ev.end_x > 70]
         shots = [ev for ev in window if (ev.type_name or "").lower() == "shot"]
         return {
             "event_count": float(len(window)),

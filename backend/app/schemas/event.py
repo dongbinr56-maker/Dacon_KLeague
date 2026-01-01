@@ -14,4 +14,10 @@ class EventRecord:
     start_y: Optional[float]
     end_x: Optional[float]
     end_y: Optional[float]
+    # Track2 스키마 확장 필드
+    team_id: Optional[int] = None
+    player_id: Optional[int] = None
+    period_id: Optional[int] = None
+    dx: Optional[float] = None
+    dy: Optional[float] = None
 
