@@ -17,17 +17,28 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
-from sklearn.ensemble import GradientBoostingClassifier, HistGradientBoostingClassifier
+from sklearn.ensemble import (
+    GradientBoostingClassifier,
+    HistGradientBoostingClassifier,
+    StackingClassifier,
+    VotingClassifier,
+)
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     average_precision_score,
     f1_score,
+    make_scorer,
     precision_recall_curve,
     precision_score,
     roc_auc_score,
     roc_curve,
 )
-from sklearn.model_selection import GroupShuffleSplit
+from sklearn.model_selection import (
+    GridSearchCV,
+    GroupShuffleSplit,
+    RandomizedSearchCV,
+)
+from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 # 프로젝트 루트를 path에 추가
@@ -89,8 +100,13 @@ def prepare_features(df: pd.DataFrame, feature_columns: list) -> tuple:
     return X, y
 
 
-def train_models(X_train: np.ndarray, y_train: np.ndarray) -> dict:
-    """여러 모델 학습"""
+def train_models(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    groups: np.ndarray = None,
+    tune_hyperparams: bool = False,
+) -> dict:
+    """여러 모델 학습 (하이퍼파라미터 튜닝 옵션 포함)"""
     models = {}
     
     # 1. LogisticRegression (표준화 필요)
@@ -98,12 +114,36 @@ def train_models(X_train: np.ndarray, y_train: np.ndarray) -> dict:
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     
-    lr = LogisticRegression(
-        class_weight="balanced",
-        max_iter=1000,
-        random_state=42,
-    )
-    lr.fit(X_train_scaled, y_train)
+    if tune_hyperparams and groups is not None:
+        print("  Tuning hyperparameters...")
+        param_grid = {
+            "C": [0.01, 0.1, 1.0, 10.0, 100.0],
+            "solver": ["lbfgs", "liblinear"],
+            "class_weight": ["balanced", None],
+        }
+        # PR-AUC를 최대화하는 하이퍼파라미터 찾기
+        pr_auc_scorer = make_scorer(average_precision_score, needs_proba=True)
+        cv = GroupShuffleSplit(n_splits=3, test_size=0.2, random_state=42)
+        grid_search = GridSearchCV(
+            LogisticRegression(max_iter=1000, random_state=42),
+            param_grid,
+            cv=cv,
+            scoring=pr_auc_scorer,
+            n_jobs=-1,
+            verbose=1,
+        )
+        grid_search.fit(X_train_scaled, y_train, groups=groups)
+        lr = grid_search.best_estimator_
+        print(f"  Best params: {grid_search.best_params_}")
+        print(f"  Best CV score (PR-AUC): {grid_search.best_score_:.4f}")
+    else:
+        lr = LogisticRegression(
+            class_weight="balanced",
+            max_iter=1000,
+            random_state=42,
+        )
+        lr.fit(X_train_scaled, y_train)
+    
     models["logistic_regression"] = {
         "model": lr,
         "scaler": scaler,
@@ -112,17 +152,108 @@ def train_models(X_train: np.ndarray, y_train: np.ndarray) -> dict:
     
     # 2. HistGradientBoostingClassifier (더 빠르고 효율적)
     print("Training HistGradientBoostingClassifier...")
-    hgb = HistGradientBoostingClassifier(
-        max_iter=100,
-        learning_rate=0.1,
-        max_depth=5,
-        random_state=42,
-    )
-    hgb.fit(X_train, y_train)
+    if tune_hyperparams and groups is not None:
+        print("  Tuning hyperparameters...")
+        param_grid = {
+            "max_iter": [50, 100, 200],
+            "learning_rate": [0.05, 0.1, 0.2],
+            "max_depth": [3, 5, 7],
+            "min_samples_leaf": [10, 20, 30],
+        }
+        pr_auc_scorer = make_scorer(average_precision_score, needs_proba=True)
+        cv = GroupShuffleSplit(n_splits=3, test_size=0.2, random_state=42)
+        # RandomizedSearchCV 사용 (GridSearchCV보다 빠름)
+        random_search = RandomizedSearchCV(
+            HistGradientBoostingClassifier(random_state=42),
+            param_grid,
+            n_iter=20,  # 20개 조합만 시도
+            cv=cv,
+            scoring=pr_auc_scorer,
+            n_jobs=-1,
+            random_state=42,
+            verbose=1,
+        )
+        random_search.fit(X_train, y_train, groups=groups)
+        hgb = random_search.best_estimator_
+        print(f"  Best params: {random_search.best_params_}")
+        print(f"  Best CV score (PR-AUC): {random_search.best_score_:.4f}")
+    else:
+        hgb = HistGradientBoostingClassifier(
+            max_iter=100,
+            learning_rate=0.1,
+            max_depth=5,
+            random_state=42,
+        )
+        hgb.fit(X_train, y_train)
+    
     models["hist_gradient_boosting"] = {
         "model": hgb,
         "scaler": None,
         "name": "HistGradientBoostingClassifier",
+    }
+    
+    return models
+
+
+def train_ensemble_models(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    base_models: dict,
+) -> dict:
+    """앙상블 모델 학습"""
+    models = {}
+    
+    # Base 모델 준비 (scaled 버전)
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    
+    # LR은 scaled 데이터 필요, HGB는 원본 데이터 사용
+    lr_scaled = LogisticRegression(
+        class_weight="balanced", max_iter=1000, random_state=42
+    )
+    lr_scaled.fit(X_train_scaled, y_train)
+    
+    hgb = HistGradientBoostingClassifier(
+        max_iter=100, learning_rate=0.1, max_depth=5, random_state=42
+    )
+    hgb.fit(X_train, y_train)
+    
+    # 1. Voting Classifier (Soft)
+    # Voting은 원본 데이터를 사용하므로, LR을 Pipeline으로 래핑
+    from sklearn.pipeline import Pipeline
+    
+    print("\nTraining VotingClassifier (soft)...")
+    lr_pipeline = Pipeline([("scaler", scaler), ("lr", lr_scaled)])
+    voting_soft = VotingClassifier(
+        estimators=[
+            ("lr", lr_pipeline),
+            ("hgb", hgb),
+        ],
+        voting="soft",
+    )
+    voting_soft.fit(X_train, y_train)
+    models["voting_soft"] = {
+        "model": voting_soft,
+        "scaler": None,  # Voting 내부에서 처리
+        "name": "VotingClassifier (soft)",
+    }
+    
+    # 2. Stacking Classifier
+    print("Training StackingClassifier...")
+    stacking = StackingClassifier(
+        estimators=[
+            ("lr", lr_pipeline),
+            ("hgb", hgb),
+        ],
+        final_estimator=LogisticRegression(class_weight="balanced", random_state=42),
+        cv=3,
+        n_jobs=-1,
+    )
+    stacking.fit(X_train, y_train)
+    models["stacking"] = {
+        "model": stacking,
+        "scaler": None,  # Stacking 내부에서 처리
+        "name": "StackingClassifier",
     }
     
     return models
@@ -253,9 +384,24 @@ def main():
     parser.add_argument(
         "--model-name",
         type=str,
-        choices=["logistic_regression", "hist_gradient_boosting"],
+        choices=[
+            "logistic_regression",
+            "hist_gradient_boosting",
+            "voting_soft",
+            "stacking",
+        ],
         default="hist_gradient_boosting",
-        help="사용할 모델 (1차 베이스라인: 2개 모델만)",
+        help="사용할 모델",
+    )
+    parser.add_argument(
+        "--tune-hyperparams",
+        action="store_true",
+        help="하이퍼파라미터 튜닝 수행 (GridSearchCV/RandomizedSearchCV)",
+    )
+    parser.add_argument(
+        "--include-ensemble",
+        action="store_true",
+        help="앙상블 모델도 학습 및 평가",
     )
     args = parser.parse_args()
     
@@ -279,8 +425,31 @@ def main():
     X_train_train, y_train_train = prepare_features(train_train_df, feature_columns)
     X_train_val, y_train_val = prepare_features(train_val_df, feature_columns)
     
+    # 그룹 정보 (하이퍼파라미터 튜닝용)
+    train_train_groups = train_train_df["game_id"].values if args.tune_hyperparams else None
+    
     # 모델 학습
-    models = train_models(X_train_train, y_train_train)
+    models = train_models(
+        X_train_train,
+        y_train_train,
+        groups=train_train_groups,
+        tune_hyperparams=args.tune_hyperparams,
+    )
+    
+    # 앙상블 모델 학습 (옵션)
+    if args.include_ensemble:
+        print("\n" + "=" * 60)
+        print("Training ensemble models...")
+        print("=" * 60)
+        # Base 모델을 앙상블용으로 준비
+        base_models_for_ensemble = {
+            "logistic_regression": models["logistic_regression"],
+            "hist_gradient_boosting": models["hist_gradient_boosting"],
+        }
+        ensemble_models = train_ensemble_models(
+            X_train_train, y_train_train, base_models_for_ensemble
+        )
+        models.update(ensemble_models)
     
     # 모델 평가 및 선택 (PR-AUC 우선)
     print(f"\nEvaluating models (PR-AUC priority)...")

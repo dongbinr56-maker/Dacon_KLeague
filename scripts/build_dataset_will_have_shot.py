@@ -144,12 +144,106 @@ def extract_features(events: pd.DataFrame) -> Dict[str, float]:
     else:
         features["possession_changes"] = 0.0
     
+    # 7. 시퀀스 피처 (최근 N개 이벤트 타입/결과)
+    # 최근 5개, 10개 이벤트의 타입 분포
+    for n in [5, 10]:
+        recent_events = events.tail(n)
+        if len(recent_events) > 0:
+            recent_types = recent_events["type_name"].value_counts()
+            # 주요 타입들의 빈도
+            for t in ["Pass", "Carry", "Shot", "Duel"]:
+                features[f"recent_{n}_{t.lower()}_count"] = float(recent_types.get(t, 0))
+            
+            # 최근 이벤트의 성공률
+            recent_successful = (recent_events["result_name"] == "Successful").sum()
+            features[f"recent_{n}_success_rate"] = float(recent_successful / len(recent_events))
+            
+            # 최근 이벤트의 평균 x 좌표 (공격 방향)
+            if recent_events["end_x"].notna().any():
+                features[f"recent_{n}_mean_end_x"] = float(recent_events["end_x"].mean())
+            else:
+                features[f"recent_{n}_mean_end_x"] = 0.0
+        else:
+            for t in ["Pass", "Carry", "Shot", "Duel"]:
+                features[f"recent_{n}_{t.lower()}_count"] = 0.0
+            features[f"recent_{n}_success_rate"] = 0.0
+            features[f"recent_{n}_mean_end_x"] = 0.0
+    
+    # 8. 이벤트 간격 통계 (mean/std)
+    if len(events) > 1:
+        time_diffs = events["time_seconds"].diff().dropna()
+        if len(time_diffs) > 0:
+            features["event_interval_mean"] = float(time_diffs.mean())
+            features["event_interval_std"] = float(time_diffs.std() if len(time_diffs) > 1 else 0.0)
+            features["event_interval_min"] = float(time_diffs.min())
+            features["event_interval_max"] = float(time_diffs.max())
+        else:
+            features["event_interval_mean"] = 0.0
+            features["event_interval_std"] = 0.0
+            features["event_interval_min"] = 0.0
+            features["event_interval_max"] = 0.0
+    else:
+        features["event_interval_mean"] = 0.0
+        features["event_interval_std"] = 0.0
+        features["event_interval_min"] = 0.0
+        features["event_interval_max"] = 0.0
+    
+    # 9. 최근 10초 vs 이전 10초 비교 피처 (공격 강도 변화)
+    if len(events) > 0:
+        current_time = events["time_seconds"].max()
+        recent_10s = events[events["time_seconds"] >= current_time - 10]
+        previous_10s = events[
+            (events["time_seconds"] >= current_time - 20) & 
+            (events["time_seconds"] < current_time - 10)
+        ]
+        
+        # 이벤트 수 비교
+        features["recent_10s_event_count"] = float(len(recent_10s))
+        features["previous_10s_event_count"] = float(len(previous_10s))
+        features["event_count_change"] = features["recent_10s_event_count"] - features["previous_10s_event_count"]
+        
+        # 공격 진입 비교 (x 좌표)
+        if recent_10s["end_x"].notna().any():
+            features["recent_10s_mean_end_x"] = float(recent_10s["end_x"].mean())
+        else:
+            features["recent_10s_mean_end_x"] = 0.0
+        
+        if previous_10s["end_x"].notna().any():
+            features["previous_10s_mean_end_x"] = float(previous_10s["end_x"].mean())
+        else:
+            features["previous_10s_mean_end_x"] = 0.0
+        
+        features["end_x_change"] = features["recent_10s_mean_end_x"] - features["previous_10s_mean_end_x"]
+        
+        # 성공률 비교
+        if len(recent_10s) > 0:
+            features["recent_10s_success_rate"] = float((recent_10s["result_name"] == "Successful").sum() / len(recent_10s))
+        else:
+            features["recent_10s_success_rate"] = 0.0
+        
+        if len(previous_10s) > 0:
+            features["previous_10s_success_rate"] = float((previous_10s["result_name"] == "Successful").sum() / len(previous_10s))
+        else:
+            features["previous_10s_success_rate"] = 0.0
+        
+        features["success_rate_change"] = features["recent_10s_success_rate"] - features["previous_10s_success_rate"]
+    else:
+        features["recent_10s_event_count"] = 0.0
+        features["previous_10s_event_count"] = 0.0
+        features["event_count_change"] = 0.0
+        features["recent_10s_mean_end_x"] = 0.0
+        features["previous_10s_mean_end_x"] = 0.0
+        features["end_x_change"] = 0.0
+        features["recent_10s_success_rate"] = 0.0
+        features["previous_10s_success_rate"] = 0.0
+        features["success_rate_change"] = 0.0
+    
     return features
 
 
 def _empty_features() -> Dict[str, float]:
     """빈 윈도우용 기본 피처"""
-    return {
+    features = {
         "event_count": 0.0,
         "time_span": 0.0,
         "event_rate": 0.0,
@@ -175,6 +269,32 @@ def _empty_features() -> Dict[str, float]:
         "penalty_area_entries": 0.0,
         "possession_changes": 0.0,
     }
+    
+    # 시퀀스 피처 (최근 5개, 10개)
+    for n in [5, 10]:
+        for t in ["pass", "carry", "shot", "duel"]:
+            features[f"recent_{n}_{t}_count"] = 0.0
+        features[f"recent_{n}_success_rate"] = 0.0
+        features[f"recent_{n}_mean_end_x"] = 0.0
+    
+    # 이벤트 간격 통계
+    features["event_interval_mean"] = 0.0
+    features["event_interval_std"] = 0.0
+    features["event_interval_min"] = 0.0
+    features["event_interval_max"] = 0.0
+    
+    # 최근 10초 vs 이전 10초 비교
+    features["recent_10s_event_count"] = 0.0
+    features["previous_10s_event_count"] = 0.0
+    features["event_count_change"] = 0.0
+    features["recent_10s_mean_end_x"] = 0.0
+    features["previous_10s_mean_end_x"] = 0.0
+    features["end_x_change"] = 0.0
+    features["recent_10s_success_rate"] = 0.0
+    features["previous_10s_success_rate"] = 0.0
+    features["success_rate_change"] = 0.0
+    
+    return features
 
 
 def generate_samples(
