@@ -193,11 +193,11 @@ export default function SessionPage({ params }: Props) {
                     </span>
                   </div>
                   {selectedAlert.pattern_type === "will_have_shot" && 
-                   selectedAlert.evidence?.metrics?.shot_probability !== undefined && (
+                   selectedAlert.evidence?.metrics?.["shot_probability"] && (
                     <div className="summary-item">
                       <span className="summary-label">예측 확률</span>
                       <span className="summary-value">
-                        {(selectedAlert.evidence.metrics.shot_probability * 100).toFixed(1)}%
+                        {(selectedAlert.evidence.metrics["shot_probability"].value * 100).toFixed(1)}%
                       </span>
                     </div>
                   )}
