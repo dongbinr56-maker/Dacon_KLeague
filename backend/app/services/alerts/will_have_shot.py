@@ -24,6 +24,8 @@ class WillHaveShotPredictor:
         self.feature_columns = None
         self.threshold = 0.5
         self.is_active = False
+        self.model_path = None
+        self.error = None
         self._load_model()
     
     def _load_model(self) -> None:
@@ -35,9 +37,11 @@ class WillHaveShotPredictor:
                 "WILL_HAVE_SHOT_MODEL_PATH",
                 str(Path(__file__).resolve().parents[4] / "artifacts" / "will_have_shot_model.joblib")
             )
+            self.model_path = model_path
             
             if not os.path.exists(model_path):
-                print(f"WillHaveShotPredictor: Model file not found at {model_path}, predictor disabled")
+                self.error = f"Model file not found at {model_path}"
+                print(f"WillHaveShotPredictor: {self.error}, predictor disabled")
                 return
             
             model_data = joblib.load(model_path)
@@ -47,8 +51,10 @@ class WillHaveShotPredictor:
             # Precision 우선 threshold 사용
             self.threshold = model_data.get("threshold_precision", model_data.get("threshold_f1", 0.5))
             self.is_active = True
+            self.error = None
             print(f"WillHaveShotPredictor: Model loaded from {model_path}, threshold={self.threshold:.4f}")
         except Exception as e:
+            self.error = str(e)
             print(f"WillHaveShotPredictor: Failed to load model: {e}, predictor disabled")
             self.is_active = False
     

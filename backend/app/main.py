@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import sessions, track2, uploads, ws
 from app.core.config import get_settings
+from app.services.alerts.will_have_shot import get_will_have_shot_predictor
 from app.services.data.track2 import validate_track2_data
 
 settings = get_settings()
@@ -70,11 +71,19 @@ app.mount(
 
 @app.get(f"{settings.api_prefix}/health")
 async def health() -> Dict[str, Any]:
+    predictor = get_will_have_shot_predictor()
+    ml_status = {
+        "enabled": predictor.is_active,
+        "loaded": predictor.model is not None,
+        "model_path": predictor.model_path,
+        "error": predictor.error,
+    }
     return {
         "status": "ok" if track2_error is None else "degraded",
         "track2": track2_validation,
         "track2_error": track2_error,
         "demo_mode": settings.demo_mode,
+        "ml": ml_status,
     }
 
 
