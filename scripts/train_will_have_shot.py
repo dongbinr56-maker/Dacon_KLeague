@@ -221,18 +221,24 @@ def train_ensemble_models(
     
     # Base 모델 준비 (scaled 버전)
     scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
+    with tqdm(total=1, desc="  Scaling features", unit="step") as pbar:
+        X_train_scaled = scaler.fit_transform(X_train)
+        pbar.update(1)
     
     # LR은 scaled 데이터 필요, HGB는 원본 데이터 사용
     lr_scaled = LogisticRegression(
         class_weight="balanced", max_iter=1000, random_state=42
     )
-    lr_scaled.fit(X_train_scaled, y_train)
+    with tqdm(total=1, desc="  Training LR", unit="model") as pbar:
+        lr_scaled.fit(X_train_scaled, y_train)
+        pbar.update(1)
     
     hgb = HistGradientBoostingClassifier(
         max_iter=100, learning_rate=0.1, max_depth=5, random_state=42
     )
-    hgb.fit(X_train, y_train)
+    with tqdm(total=1, desc="  Training HGB", unit="model") as pbar:
+        hgb.fit(X_train, y_train)
+        pbar.update(1)
     
     # 1. Voting Classifier (Soft)
     # Voting은 원본 데이터를 사용하므로, LR을 Pipeline으로 래핑
@@ -245,7 +251,9 @@ def train_ensemble_models(
         ],
         voting="soft",
     )
-    voting_soft.fit(X_train, y_train)
+    with tqdm(total=1, desc="  Training Voting", unit="model") as pbar:
+        voting_soft.fit(X_train, y_train)
+        pbar.update(1)
     models["voting_soft"] = {
         "model": voting_soft,
         "scaler": None,  # Voting 내부에서 처리
@@ -263,7 +271,9 @@ def train_ensemble_models(
         cv=3,
         n_jobs=-1,
     )
-    stacking.fit(X_train, y_train)
+    with tqdm(total=3, desc="  Stacking CV", unit="fold") as pbar:
+        stacking.fit(X_train, y_train)
+        pbar.update(3)
     models["stacking"] = {
         "model": stacking,
         "scaler": None,  # Stacking 내부에서 처리
@@ -472,7 +482,7 @@ def main():
     best_val_pr_auc = -1
     all_metrics = {}
     
-    for model_name, model_dict in models.items():
+    for model_name, model_dict in tqdm(models.items(), desc="Evaluating models", unit="model"):
         metrics, f1_threshold, precision_threshold = evaluate_model(
             model_dict,
             X_train_train,
