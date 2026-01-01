@@ -150,8 +150,8 @@ def evaluate_model(
         y_val_pred_proba = model.predict_proba(X_val)[:, 1]
     
     # 평가 지표
-    train_auc = roc_auc_score(y_train, y_train_pred_proba)
-    val_auc = roc_auc_score(y_val, y_val_pred_proba)
+    train_roc_auc = roc_auc_score(y_train, y_train_pred_proba)
+    val_roc_auc = roc_auc_score(y_val, y_val_pred_proba)
     
     train_pr_auc = average_precision_score(y_train, y_train_pred_proba)
     val_pr_auc = average_precision_score(y_val, y_val_pred_proba)

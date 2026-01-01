@@ -145,6 +145,31 @@ Track2 데이터의 실제 분포와 특성 파악
    - metrics (PR-AUC, Precision, Recall, F1)
    - train/test game_id 목록
 
+### 모델 학습 결과 (실행 완료)
+
+**모델 비교:**
+- LogisticRegression: Val PR-AUC 0.0696 (선택됨)
+- HistGradientBoostingClassifier: Val PR-AUC 0.0647
+
+**최종 모델 (LogisticRegression) Test 성능:**
+- **Test PR-AUC: 0.0627** (1순위 지표)
+- Test ROC-AUC: 0.6203
+- F1 최대 threshold 기준:
+  - Precision: 0.0641
+  - Recall: 0.5740
+  - F1: 0.1153
+- Precision≥0.6 threshold: 달성 실패 (최대 0.0622)
+
+**분석:**
+- PR-AUC가 낮은 이유: 양성 비율이 4.61%로 낮고, 예측이 어려운 패턴
+- Recall이 높은 이유: 모델이 보수적으로 예측 (낮은 threshold)
+- Precision이 낮은 이유: False Positive가 많음
+- 개선 방향: 피처 엔지니어링, 앙상블, 하이퍼파라미터 튜닝 필요
+
+**산출물:**
+- `artifacts/will_have_shot_model.joblib`: 학습된 모델
+- `artifacts/will_have_shot_metrics.json`: 평가 지표
+
 ---
 
 ## 다음 단계
