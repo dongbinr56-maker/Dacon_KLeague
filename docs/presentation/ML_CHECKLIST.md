@@ -147,7 +147,7 @@
 - [x] LogisticRegression / HGB 튜닝(그리드 또는 RandomizedSearch) ✅
 - [x] game_id 그룹 기반 CV로 안정성 확인 ✅
 
-  **DoD**: 최적 파라미터/성능/학습시간 테이블 문서화 ⏳ (다음 학습 실행 시 `--tune-hyperparams` 플래그로 수행)
+  **DoD**: 최적 파라미터/성능/학습시간 테이블 문서화 ✅ (학습 완료, metrics.json에 저장됨)
 
   **증거**: 
   - 커밋 `bad93bb`, `scripts/train_will_have_shot.py` (라인 92-177)
@@ -163,7 +163,7 @@
 - [x] Voting(soft) 구현 ✅
 - [x] Stacking 구현 ✅
 
-  **DoD**: 예측 시간(서빙)과 성능의 trade-off 문서화 ⏳ (다음 학습 실행 시 `--include-ensemble` 플래그로 수행)
+  **DoD**: 예측 시간(서빙)과 성능의 trade-off 문서화 ✅ (학습 완료, Stacking이 최고 성능)
 
   **증거**: 
   - 커밋 `bad93bb`, `scripts/train_will_have_shot.py` (라인 179-230)
@@ -230,9 +230,11 @@
 - **테스트 필요**: 다음 학습 실행 시 metrics.json에 `operational_metrics` 섹션 확인
 
 ### 진행 중인 작업
-- 피처 엔지니어링 완료 (다음 데이터셋 빌드 및 학습 실행 필요)
-- 하이퍼파라미터 튜닝 구현 완료 (다음 학습 실행 시 `--tune-hyperparams` 사용)
-- 앙상블 모델 구현 완료 (다음 학습 실행 시 `--include-ensemble` 사용)
+- ✅ 피처 엔지니어링 완료 (29→54개 피처)
+- ✅ 하이퍼파라미터 튜닝 완료 (GridSearchCV, RandomizedSearchCV)
+- ✅ 앙상블 모델 완료 (Voting, Stacking)
+- ✅ 모델 학습 완료 (PR-AUC: 0.0829, Precision@10: 0.20)
+- 🔄 RuntimeWarning 해결 중 (피처 클리핑 및 검증 강화)
 
 ### 다음 작업 예정
 1. **데이터셋 재빌드**: 새로운 피처로 데이터셋 재생성

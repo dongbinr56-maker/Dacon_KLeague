@@ -97,8 +97,17 @@ def prepare_features(df: pd.DataFrame, feature_columns: list) -> tuple:
     X = df[feature_columns].values
     y = df["will_have_shot"].astype(int).values
     
-    # 결측치 처리 (0으로 채우기)
-    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+    # 결측치 및 이상치 처리
+    # 1. 무한대 값 클리핑 (극단값 방지)
+    X = np.clip(X, -1e6, 1e6)
+    
+    # 2. NaN, 무한대 처리
+    X = np.nan_to_num(X, nan=0.0, posinf=1e6, neginf=-1e6)
+    
+    # 3. 다시 클리핑 (안전장치)
+    X = np.clip(X, -1e6, 1e6)
+    
+    # 4. 표준화 전 검증 (분산이 0인 피처 제거는 학습 단계에서 처리)
     
     return X, y
 
@@ -140,7 +149,9 @@ def train_models(
         # GridSearchCV 진행 표시
         total_combinations = len(param_grid["C"]) * len(param_grid["solver"]) * len(param_grid["class_weight"])
         with tqdm(total=total_combinations * 3, desc="  GridSearchCV", unit="fold") as pbar:
-            grid_search.fit(X_train_scaled, y_train, groups=groups)
+            # GridSearchCV 전 데이터 재검증
+            X_train_scaled_clean = np.clip(X_train_scaled, -10, 10)
+            grid_search.fit(X_train_scaled_clean, y_train, groups=groups)
             pbar.update(total_combinations * 3)
         lr = grid_search.best_estimator_
         print(f"  Best params: {grid_search.best_params_}")
