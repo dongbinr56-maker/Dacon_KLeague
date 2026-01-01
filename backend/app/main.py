@@ -1,4 +1,5 @@
 import os
+import inspect
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -13,13 +14,23 @@ from app.services.data.track2 import validate_track2_data
 
 settings = get_settings()
 
-app = FastAPI(title=settings.app_name)
-
-os.makedirs(settings.storage_path, exist_ok=True)
-os.makedirs(settings.evidence_path, exist_ok=True)
+track2_validation: Dict[str, str] = {}
+track2_error: Optional[str] = None
+try:  # pragma: no cover - startup validation
+    track2_validation = validate_track2_data()
+except Exception as exc:  # noqa: BLE001
+    track2_error = str(exc)
 
 STATIC_DEMO_DIR = Path(__file__).resolve().parent / "static" / "demo"
-STATIC_DEMO_DIR.mkdir(parents=True, exist_ok=True)
+
+
+async def lifespan(app: FastAPI):  # pragma: no cover - runtime path
+    os.makedirs(settings.storage_path, exist_ok=True)
+    os.makedirs(settings.evidence_path, exist_ok=True)
+    yield
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -29,24 +40,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-track2_validation: Dict[str, str] = {}
-track2_error: Optional[str] = None
-try:  # pragma: no cover - startup validation
-    track2_validation = validate_track2_data()
-except Exception as exc:  # noqa: BLE001
-    track2_error = str(exc)
-
 
 @app.get("/")
 async def root():
     return {"message": "KLeague tactical feedback backend", "service": settings.app_name}
 
 
+static_kwargs: Dict[str, Any] = {}
+if "check_dir" in inspect.signature(StaticFiles).parameters:
+    static_kwargs["check_dir"] = False
+
 app.mount(
     f"{settings.api_prefix}/evidence",
-    StaticFiles(directory=settings.evidence_path),
+    StaticFiles(directory=settings.evidence_path, **static_kwargs),
     name="evidence",
 )
+
 
 @app.get("/demo", include_in_schema=False)
 @app.get("/demo/", include_in_schema=False)
