@@ -439,11 +439,30 @@ def main():
         action="store_true",
         help="앙상블 모델도 학습 및 평가",
     )
+    parser.add_argument(
+        "--selected-features-path",
+        type=str,
+        default=None,
+        help="선택된 피처 목록 파일 경로 (JSON, 선택된 피처만 사용)",
+    )
     args = parser.parse_args()
     
     # 데이터 로드
     df = load_dataset(args.dataset_path)
     feature_columns = load_feature_columns(args.feature_columns_path)
+    
+    # 선택된 피처 필터링 (옵션)
+    if args.selected_features_path and os.path.exists(args.selected_features_path):
+        print(f"\nLoading selected features from: {args.selected_features_path}")
+        with open(args.selected_features_path, "r") as f:
+            selected_features = json.load(f)
+        # feature_columns에서 선택된 피처만 필터링
+        original_count = len(feature_columns)
+        feature_columns = [f for f in feature_columns if f in selected_features]
+        print(f"Filtered features: {original_count} → {len(feature_columns)}")
+        if len(feature_columns) == 0:
+            print("Warning: No features matched! Using all features.")
+            feature_columns = load_feature_columns(args.feature_columns_path)
     
     # Split
     train_df, test_df, train_games, test_games = split_by_game_id(
