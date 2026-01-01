@@ -24,6 +24,9 @@ jobs:
       - name: Compile backend
         run: python -m compileall backend
 
+      - name: Import smoke test
+        run: PYTHONPATH=backend python -c "from app.main import app; print('import-ok')"
+
       - name: Run backend tests
         run: pytest -q backend
 

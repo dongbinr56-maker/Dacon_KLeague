@@ -52,21 +52,8 @@ Track2 이벤트 로그(`00_data/Track2/raw_data.csv`)를 기본 입력으로 �
   2) 브라우저에서 `http://localhost:8000/demo/` 접속(슬래시 포함 시 바로 200)
   3) Flow: Health 체크 → Games 로드 → Session 생성 → Session start → Alerts 폴링 → Evidence 링크 클릭(mp4/png)
 - Track2 데이터가 없으면 `/api/health`가 `degraded`로 표시되므로, demo 버튼을 눌렀을 때 데이터가 없다는 로그가 뜰 수 있습니다(데이터를 채우거나 health 메시지를 확인).
-- `scripts/demo.sh`/`scripts/smoke_demo.sh`는 backend 미기동 시 서버 실행 안내를 출력합니다. `ALLOW_DEGRADED=1`를 설정하면 `/api/health`가 degraded여도 진행을 시도하되, games가 비면 exit code 2로 종료합니다.
+- `scripts/demo.sh`/`scripts/smoke_demo.sh`는 backend 미기동 시 서버 실행 안내를 출력합니다. `ALLOW_DEGRADED=1`를 설정하면 `/api/health`가 degraded여도 진행을 시도하고, games가 비면 기본은 실패(exit 2)하지만 `SKIP_IF_NO_GAMES=1`이면 스킵(exit 0) 메시지를 남깁니다.
 - `/demo`와 `/demo/` 모두 200 HTML을 반환하며, 리다이렉트 없이 바로 진입됩니다.
-
-## Proxy 제한 환경 가이드
-- Codex 같은 제한망에서는 `registry.npmjs.org`가 403으로 차단되어 프론트 빌드가 불가합니다.
-- `scripts/build_frontend.sh`는 사전 probe 후 접근이 막혀 있으면 exit code 2와 함께 “NPM_REGISTRY를 내부 미러로 지정하거나 CI에서 빌드” 안내를 출력합니다.
-- GitHub Actions CI(`.github/workflows/ci.yml`)가 정상 네트워크에서 `npm ci && npm run build`를 수행하므로, 프록시 차단 환경에서는 CI 결과로 프론트 품질을 보장하세요.
-
-## Backend-only 데모 (/demo)
-- 백엔드만으로도 API 플로우를 검증할 수 있는 정적 데모 페이지가 `/demo`/`/demo/`에 제공됩니다(Next.js 필요 없음).
-- 실행 예:
-  1) `cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000`
-  2) 브라우저에서 `http://localhost:8000/demo/` 접속(슬래시 포함 시 바로 200)
-  3) Flow: Health 체크 → Games 로드 → Session 생성 → Session start → Alerts 폴링 → Evidence 링크 클릭(mp4/png)
-- Track2 데이터가 없으면 `/api/health`가 `degraded`로 표시되므로, demo 버튼을 눌렀을 때 데이터가 없다는 로그가 뜰 수 있습니다(데이터를 채우거나 health 메시지를 확인).
 
 ## 문서
 - `docs/ARCHITECTURE.md` : 전체 아키텍처 개요

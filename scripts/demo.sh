@@ -5,6 +5,7 @@ API_BASE=${API_BASE:-http://localhost:8000/api}
 PLAYBACK_SPEED=${PLAYBACK_SPEED:-5}
 LOG_PREFIX="[demo]"
 ALLOW_DEGRADED=${ALLOW_DEGRADED:-0}
+SKIP_IF_NO_GAMES=${SKIP_IF_NO_GAMES:-0}
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -39,7 +40,12 @@ fi
 games_json=$(curl -sS "${API_BASE}/track2/games?recommend=true") || fail "failed to load games"
 game_id=$(echo "${games_json}" | jq -r '.games[0].game_id // empty')
 if [[ -z "${game_id}" ]]; then
-  echo "${LOG_PREFIX} Track2 games list is empty. Populate Track2 data or check /api/health track2_error."
+  msg="${LOG_PREFIX} Track2 games list is empty. Populate Track2 data or check /api/health track2_error."
+  if [[ "${SKIP_IF_NO_GAMES}" == "1" ]]; then
+    echo "${msg} (SKIP_IF_NO_GAMES=1 → exiting 0)"
+    exit 0
+  fi
+  echo "${msg}"
   exit 2
 fi
 step "Using game_id=${game_id}"

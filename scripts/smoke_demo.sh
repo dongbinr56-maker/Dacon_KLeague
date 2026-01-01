@@ -5,6 +5,7 @@ API_BASE=${API_BASE:-http://localhost:8000/api}
 FRONTEND_BASE=${FRONTEND_BASE:-http://localhost:3000}
 LOG_PREFIX="[smoke_demo]"
 ALLOW_DEGRADED=${ALLOW_DEGRADED:-0}
+SKIP_IF_NO_GAMES=${SKIP_IF_NO_GAMES:-0}
 
 echo "${LOG_PREFIX} ensure backend is running (frontend optional) ..."
 
@@ -52,7 +53,12 @@ echo "${LOG_PREFIX} fetch game list..."
 game_resp=$(games)
 game_id=$(echo "${game_resp}" | jq -r '.games[0].game_id')
 if [[ -z "${game_id}" || "${game_id}" == "null" ]]; then
-  echo "${LOG_PREFIX} no game_id found (Track2 data missing?). Populate data or check /api/health track2_error." >&2
+  msg="${LOG_PREFIX} no game_id found (Track2 data missing?). Populate data or check /api/health track2_error."
+  if [[ "${SKIP_IF_NO_GAMES}" == "1" ]]; then
+    echo "${msg} (SKIP_IF_NO_GAMES=1 → exiting 0)"
+    exit 0
+  fi
+  echo "${msg}" >&2
   exit 2
 fi
 echo "${LOG_PREFIX} using game_id=${game_id}"
