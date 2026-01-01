@@ -3,7 +3,7 @@ import contextlib
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from app.core.config import get_settings
 from app.schemas.event import EventRecord
