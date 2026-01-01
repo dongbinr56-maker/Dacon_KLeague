@@ -134,6 +134,7 @@ def evaluate_model(
     y_train: np.ndarray,
     X_val: np.ndarray,
     y_val: np.ndarray,
+    val_games: list = None,
 ) -> dict:
     """모델 평가"""
     model = model_dict["model"]
@@ -179,6 +180,32 @@ def evaluate_model(
     y_val_pred_f1 = (y_val_pred_proba >= best_threshold).astype(int)
     y_val_pred_precision = (y_val_pred_proba >= precision_threshold).astype(int)
     
+    # Precision@K 계산 (K=10, 20)
+    sorted_indices = np.argsort(y_val_pred_proba)[::-1]
+    precision_at_10 = float(y_val[sorted_indices[:10]].sum() / 10) if len(y_val) >= 10 else 0.0
+    precision_at_20 = float(y_val[sorted_indices[:20]].sum() / 20) if len(y_val) >= 20 else 0.0
+    
+    # 경기당 알림 수 계산 (val_games가 제공된 경우)
+    alerts_per_game_at_best = None
+    if val_games is not None and len(val_games) > 0:
+        total_alerts = y_val_pred_f1.sum()
+        alerts_per_game_at_best = float(total_alerts / len(val_games))
+    
+    # Threshold sweep (0.1 ~ 0.9, 0.05 간격)
+    threshold_sweep = []
+    for thresh in np.arange(0.1, 0.95, 0.05):
+        y_pred = (y_val_pred_proba >= thresh).astype(int)
+        if y_pred.sum() > 0:  # 최소 1개 이상 예측이 있을 때만
+            sweep_metrics = {
+                "threshold": float(thresh),
+                "precision": float(precision_score(y_val, y_pred, zero_division=0)),
+                "recall": float(recall_score(y_val, y_pred, zero_division=0)),
+                "f1": float(f1_score(y_val, y_pred, zero_division=0)),
+            }
+            if val_games is not None and len(val_games) > 0:
+                sweep_metrics["alerts_per_game"] = float(y_pred.sum() / len(val_games))
+            threshold_sweep.append(sweep_metrics)
+    
     metrics = {
         "train_roc_auc": float(train_roc_auc),
         "val_roc_auc": float(val_roc_auc),
@@ -192,7 +219,13 @@ def evaluate_model(
         "val_f1_at_precision": float(f1_score(y_val, y_val_pred_precision)),
         "val_precision_at_precision": float(precision_score(y_val, y_val_pred_precision)),
         "val_recall_at_precision": float(recall_score(y_val, y_val_pred_precision)),
+        "precision_at_10": precision_at_10,
+        "precision_at_20": precision_at_20,
+        "threshold_sweep": threshold_sweep,
     }
+    
+    if alerts_per_game_at_best is not None:
+        metrics["alerts_per_game_at_best_threshold"] = alerts_per_game_at_best
     
     return metrics, best_threshold, precision_threshold
 
@@ -298,6 +331,7 @@ def main():
         y_train,
         X_test,
         y_test,
+        val_games=test_games,
     )
     
     print(f"\nTest set performance:")
@@ -309,6 +343,10 @@ def main():
     print(f"  Test F1 (Precision≥0.6 threshold): {test_metrics['val_f1_at_precision']:.4f}")
     print(f"  Test Precision (Precision≥0.6 threshold): {test_metrics['val_precision_at_precision']:.4f}")
     print(f"  Test Recall (Precision≥0.6 threshold): {test_metrics['val_recall_at_precision']:.4f}")
+    print(f"  Test Precision@10: {test_metrics['precision_at_10']:.4f}")
+    print(f"  Test Precision@20: {test_metrics['precision_at_20']:.4f}")
+    if 'alerts_per_game_at_best_threshold' in test_metrics:
+        print(f"  Test Alerts per game (F1 최대 threshold): {test_metrics['alerts_per_game_at_best_threshold']:.2f}")
     
     # 모델 저장
     artifacts_dir = project_root / "artifacts"

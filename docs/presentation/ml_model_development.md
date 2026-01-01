@@ -58,8 +58,8 @@ Track2 데이터의 실제 분포와 특성 파악
    - Shot: 4,381 (0.76%)
 
 ### 산출물
-- `EDA/eda_track2_summary.json`: 분석 결과 요약
-- `EDA/eda_track2_report.md`: 마크다운 리포트
+- `artifacts/eda_track2_summary.json`: EDA 분석 결과 요약
+- `artifacts/eda_track2_report.md`: EDA 마크다운 리포트
 
 ---
 
@@ -80,9 +80,9 @@ Track2 데이터의 실제 분포와 특성 파악
    - 이유: 서비스적으로 "누가 곧 슈팅하나"가 의미 있고, 알림 해석이 깔끔
 
 3. **좌표 임계값 (EDA 결과 반영)**
-   - final_third: 70 (=105×2/3)
-   - penalty_area: 88 (=105-16.5, 실무적)
-   - 채널 분할: left=22.7 (=68/3), right=45.3 (=68×2/3)
+   - final_third: 70m (=105m×2/3, 피치 길이의 2/3 지점)
+   - penalty_area: 88m (=105m-16.5m, 페널티박스 x축 경계)
+   - 채널 분할: left=22.7m (=68m/3), right=45.3m (=68m×2/3)
 
 4. **피처 세트**
    - 기본 통계: event_count, time_span, event_rate
@@ -127,7 +127,8 @@ Track2 데이터의 실제 분포와 특성 파악
 1. **평가 지표 (우선순위)**
    - 1순위: PR-AUC (불균형 데이터에 적합)
    - 2순위: ROC-AUC
-   - 운영 지표: Precision@Threshold (F1 최대 + Precision≥0.6)
+   - 운영 지표: Precision@K (K=10, 20), 경기당 알림 예산 기반 평가
+   - 차기 개선 목표: Precision≥0.6 (현재는 운영 정책 기반으로 전환)
 
 2. **데이터 분할**
    - game_id 홀드아웃 (시간 누수 방지)
@@ -164,6 +165,11 @@ Track2 데이터의 실제 분포와 특성 파악
 - PR-AUC가 낮은 이유: 양성 비율이 4.61%로 낮고, 예측이 어려운 패턴
 - Recall이 높은 이유: 모델이 보수적으로 예측 (낮은 threshold)
 - Precision이 낮은 이유: False Positive가 많음
+- **성능 해석**:
+  - 양성비(윈도우 기준) = 4.61% → 랜덤 PR-AUC ≈ 0.046
+  - 모델 PR-AUC = 0.0627 → 랜덤 대비 +0.0166p (상대 +36% 개선)
+  - 다만 운영 지표(Precision)는 낮아 threshold 기반 알림은 오탐이 많음
+  - 따라서 **Precision@K / 경기당 알림 예산 기반 정책**으로 운영 안정화 후, 피처/모델 고도화로 성능 개선 예정
 - 개선 방향: 피처 엔지니어링, 앙상블, 하이퍼파라미터 튜닝 필요
 
 **산출물:**
@@ -231,7 +237,7 @@ ML 모델을 SessionManager에 통합하여 실시간 예측 및 알림 생성
 - 피처 엔지니어링 (시퀀스 피처, 시간적 패턴)
 - 앙상블 모델 (LogisticRegression + HistGradientBoosting)
 - 하이퍼파라미터 튜닝
-- Precision 목표 달성 (현재 0.064 → 0.6 목표)
+- 운영 정책 기반 평가 고도화 후 Precision 개선 (차기 목표: Precision≥0.6)
 
 ### 추가 라벨 (향후)
 - `will_have_goal` (슈팅 → 골)
@@ -244,7 +250,7 @@ ML 모델을 SessionManager에 통합하여 실시간 예측 및 알림 생성
 
 1. **라벨 정의**: 팀 기준 (공격 주체의 미래 슈팅)
 2. **좌표 스케일**: x: 0~105, y: 0~68 (미터)
-3. **평가 지표**: PR-AUC 우선, Precision≥0.6 목표
+3. **평가 지표**: PR-AUC 우선, 운영 정책 기반 평가 (Precision@K, 경기당 알림 예산)
 4. **데이터 분할**: game_id 홀드아웃 필수
 5. **모델**: 1차는 2개만 (복잡도 최소화)
 6. **통합 방식**: Fallback 유지, 최소 침습, 에러 안전성
@@ -268,7 +274,8 @@ ML 모델을 SessionManager에 통합하여 실시간 예측 및 알림 생성
 - **서비스**: 실시간 예측 및 알림 생성 가능
 
 ### 산출물
-- `EDA/`: EDA 리포트 및 요약
+- `artifacts/eda_track2_summary.json`: EDA 분석 결과 요약
+- `artifacts/eda_track2_report.md`: EDA 마크다운 리포트
 - `artifacts/will_have_shot_dataset.parquet`: 학습 데이터셋
 - `artifacts/will_have_shot_model.joblib`: 학습된 모델
 - `artifacts/will_have_shot_metrics.json`: 평가 지표
@@ -287,5 +294,5 @@ ML 모델을 SessionManager에 통합하여 실시간 예측 및 알림 생성
 
 ---
 
-*마지막 업데이트: 2025-01-02*
+*마지막 업데이트: 2026-01-02 (Asia/Seoul)*
 
