@@ -172,16 +172,71 @@ Track2 데이터의 실제 분포와 특성 파악
 
 ---
 
+## Phase 4: 백엔드 통합 (PR#5)
+
+### 목적
+ML 모델을 SessionManager에 통합하여 실시간 예측 및 알림 생성
+
+### 구현 내용
+1. **예측기 모듈 추가**
+   - `backend/app/services/alerts/will_have_shot.py`: 싱글톤 예측기 클래스
+   - 서버 시작 시 모델 자동 로드 (모델 파일 없으면 비활성 상태)
+   - `predict_proba(features_dict) -> float` 메서드 제공
+
+2. **SessionManager 통합**
+   - `_extract_features_for_ml()`: 이벤트 윈도우에서 30개 피처 추출
+   - `_evaluate_event_alerts()`에 ML 예측 블록 추가
+   - 쿨다운 15초 적용 (과도한 연속 알림 방지)
+   - 예외 처리: ML 예측 실패해도 서비스 정상 동작
+
+3. **알림 생성**
+   - `pattern_type="will_have_shot"` 지원
+   - `Severity.high`로 설정
+   - metrics에 `shot_probability`, `lead_time_seconds` 포함
+   - claim/recommendation/risk 텍스트 자동 생성
+
+### 주요 설계 결정
+- **Fallback 유지**: 모델 파일 없으면 규칙 기반만 동작
+- **최소 침습**: 기존 코드 구조 유지, ML 블록만 추가
+- **에러 안전성**: 예외 발생해도 서비스 중단 없음
+
+---
+
+## Phase 5: 프론트 표시 (PR#6)
+
+### 목적
+`will_have_shot` 알림을 프론트엔드에 표시
+
+### 구현 내용
+1. **AlertsPanel.tsx 개선**
+   - `getPatternLabel()`에 "10초 내 슈팅" 라벨 추가
+   - 확률 표시: `evidence.metrics["shot_probability"].value` 접근
+   - 소수점 1자리로 표시 (예: "예측 확률: 6.4%")
+
+2. **UI/UX**
+   - 기존 알림 패널과 동일한 스타일 유지
+   - 확률은 accent 색상으로 강조
+   - 패턴 필터에 자동 포함
+
+### 사용자 경험
+- 알림 목록에서 "10초 내 슈팅" 패턴 확인 가능
+- 확률 값으로 예측 신뢰도 파악
+- 클릭 시 상세 정보 (claim/recommendation/risk) 확인
+
+---
+
 ## 다음 단계
 
-### 즉시 실행 필요
-1. 데이터셋 빌더 실행 → 양성 비율 확인
-2. 모델 학습 실행 → test PR-AUC + Precision/Recall 확인
+### 모델 개선 (향후)
+- 피처 엔지니어링 (시퀀스 피처, 시간적 패턴)
+- 앙상블 모델 (LogisticRegression + HistGradientBoosting)
+- 하이퍼파라미터 튜닝
+- Precision 목표 달성 (현재 0.064 → 0.6 목표)
 
-### 이후 단계
-- 백엔드 통합 (SessionManager)
-- 프론트 표시
-- 모델 튜닝/앙상블
+### 추가 라벨 (향후)
+- `will_have_goal` (슈팅 → 골)
+- `will_have_turnover` (볼 소유 변화)
+- `will_enter_final_third` (파이널서드 진입)
 
 ---
 
