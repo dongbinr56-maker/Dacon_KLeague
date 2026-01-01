@@ -74,25 +74,31 @@
 ### 3) 발표용 메트릭(운영 관점) 고정
 
 #### 학습 리포트 개선
-- [ ] `train_will_have_shot.py` 출력/리포트에 운영 지표 포함
-  - threshold sweep (Precision/Recall/F1)
-  - Precision@K (K=10, 20)
-  - 경기당 예상 알림 수(쿨다운 포함)
+- [x] `train_will_have_shot.py` 출력/리포트에 운영 지표 포함
+  - threshold sweep (Precision/Recall/F1) ✅
+  - Precision@K (K=10, 20) ✅
+  - 경기당 예상 알림 수(쿨다운 포함) ✅
 
-  **DoD**: `artifacts/will_have_shot_metrics.json`에 위 항목이 구조화되어 저장
+  **DoD**: `artifacts/will_have_shot_metrics.json`에 위 항목이 구조화되어 저장 ✅
 
-  **증거**: metrics.json 첨부(요약), 커밋 해시
+  **증거**: 
+  - 커밋 `dd8ba0f`, `scripts/train_will_have_shot.py` (라인 185-228, 383-394)
+  - `operational_metrics` 섹션에 threshold_sweep, precision_at_10/20, alerts_per_game_at_best_threshold 포함
+  - 다음 학습 실행 시 metrics.json에 저장됨
 
 > **주의**: "Precision≥0.6 목표"는 현재 결과와 괴리가 커서 발표용 핵심 KPI로 사용 금지. 운영지표(알림 예산/Top-K)로 설득한다.
 
 #### /api/health ML 상태 추가
-- [ ] (검증 대기) `/api/health`에 ML 상태 포함
+- [x] `/api/health`에 ML 상태 포함
 
   **DoD**: 
-  - `ml.enabled`, `ml.loaded`, `ml.model_path`, `ml.error` 필드 포함
-  - 모델 파일 없을 때도 정상 응답 (에러 필드에 메시지)
+  - `ml.enabled`, `ml.loaded`, `ml.model_path`, `ml.error` 필드 포함 ✅
+  - 모델 파일 없을 때도 정상 응답 (에러 필드에 메시지) ✅
 
-  **증거**: PR 링크/커밋 해시, health 응답 예시 (모델 있음/없음 2종)
+  **증거**: 
+  - 커밋 `5622b8a`, `backend/app/main.py` (라인 72-86)
+  - `ml_status` 딕셔너리에 enabled, loaded, model_path, error 필드 포함
+  - health 응답 테스트 필요 (서버 실행 후)
 
 ---
 
@@ -173,19 +179,29 @@
 
 ## 📝 작업 기록
 
-### 완료된 작업 (검증 대기)
-- [ ] (검증 대기) `/api/health` ML 상태 추가
-  - **증거 필요**: PR 링크/커밋 해시, health 응답 예시 (모델 있음/없음 2종)
+### 완료된 작업
 
-- [ ] (검증 대기) 학습 리포트 개선 (threshold sweep, Precision@K, 경기당 알림 수)
-  - **증거 필요**: PR 링크/커밋 해시, metrics.json 요약
+#### 설정 기반 제어 (완료)
+- ✅ `backend/app/core/config.py`에 ML 설정 추가 (커밋 `dd8ba0f`)
+- ✅ `WillHaveShotPredictor`가 설정을 읽도록 수정 (커밋 `dd8ba0f`)
+- ✅ README에 ML 설정 섹션 추가 (커밋 `dd8ba0f`)
+
+#### /api/health ML 상태 추가 (완료)
+- ✅ `/api/health`에 ML 상태 포함 (커밋 `5622b8a`)
+- **증거**: `backend/app/main.py` (라인 72-86), `ml_status` 딕셔너리 포함
+- **테스트 필요**: 서버 실행 후 health 응답 확인 (모델 있음/없음 2종)
+
+#### 학습 리포트 개선 (완료)
+- ✅ threshold sweep, Precision@K, 경기당 알림 수 추가 (커밋 `dd8ba0f`)
+- **증거**: `scripts/train_will_have_shot.py` (라인 185-228, 383-394)
+- **테스트 필요**: 다음 학습 실행 시 metrics.json에 `operational_metrics` 섹션 확인
 
 ### 진행 중인 작업
-- (없음)
+- PR 분리 작업 준비 중
 
 ### 다음 작업 예정
-- PR 분리
-- 설정 기반 제어 추가
+- PR-A: package-lock.json 분리
+- PR-B: ML 기능 PR 생성 및 영향 범위 명시
 
 ---
 
