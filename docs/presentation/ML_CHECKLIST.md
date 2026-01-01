@@ -17,13 +17,23 @@
 
   **DoD**: PR 본문에 아래 3개 포함
   1. `git diff --name-only origin/main...HEAD` ✅ (준비됨: `docs/presentation/PR_PREPARATION.md`)
-  2. `cd frontend && npm ci` 실행 로그(요약) ⏳ (실행 필요)
-  3. `cd frontend && npm run build` 실행 로그(요약) ⏳ (실행 필요)
+  2. `cd frontend && npm ci` 실행 로그(요약) ✅
+     ```
+     added 29 packages in 2s
+     ```
+  3. `cd frontend && npm run build` 실행 로그(요약) ✅
+     ```
+     ✓ Compiled successfully
+     ✓ Generating static pages (4/4)
+     Route (app)                              Size     First Load JS
+     ┌ ○ /                                    5.84 kB        96.3 kB
+     └ ƒ /sessions/[id]                       7.25 kB        97.7 kB
+     ```
 
   **증거**: 
   - 커밋 해시: `fb1c656`
   - PR 템플릿: `docs/presentation/PR_PREPARATION.md`
-  - 실행 로그: (서버 실행 후 수집)
+  - 실행 로그: 위 참조 (2026-01-02 실행)
 
 #### PR-B (ML 기능)
 - [ ] ML 기능을 `feat/will-have-shot-ml` 브랜치로 분리하고 PR 생성
