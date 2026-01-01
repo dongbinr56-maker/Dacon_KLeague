@@ -277,5 +277,15 @@ ML 모델을 SessionManager에 통합하여 실시간 예측 및 알림 생성
 
 ---
 
+## CI/CD 이슈 및 해결
+
+### 프론트엔드 CI 실패 (해결 완료)
+- **문제**: TypeScript 타입 에러 - `evidence.metrics.shot_probability` 직접 접근
+- **원인**: `metrics`는 `Record<string, EvidenceMetric>` 형태이므로 `.value` 접근 필요
+- **해결**: `metrics["shot_probability"].value`로 수정
+- **영향 파일**: `frontend/app/sessions/[id]/page.tsx`, `frontend/components/AlertsPanel.tsx`
+
+---
+
 *마지막 업데이트: 2025-01-02*
 
