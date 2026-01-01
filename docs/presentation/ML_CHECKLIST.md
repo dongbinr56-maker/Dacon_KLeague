@@ -147,7 +147,7 @@
 - [x] LogisticRegression / HGB 튜닝(그리드 또는 RandomizedSearch) ✅
 - [x] game_id 그룹 기반 CV로 안정성 확인 ✅
 
-  **DoD**: 최적 파라미터/성능/학습시간 테이블 문서화 ✅ (학습 완료, metrics.json에 저장됨)
+  **DoD**: 최적 파라미터/성능/학습시간 테이블 문서화 ⚠️ (학습 완료, metrics.json에 저장됨, 하지만 목표 지표 미달로 재튜닝 필요)
 
   **증거**: 
   - 커밋 `bad93bb`, `scripts/train_will_have_shot.py` (라인 92-177)
@@ -163,7 +163,7 @@
 - [x] Voting(soft) 구현 ✅
 - [x] Stacking 구현 ✅
 
-  **DoD**: 예측 시간(서빙)과 성능의 trade-off 문서화 ✅ (학습 완료, Stacking이 최고 성능)
+  **DoD**: 예측 시간(서빙)과 성능의 trade-off 문서화 ⚠️ (학습 완료, Stacking이 최고 성능이지만 목표 지표 미달로 개선 필요)
 
   **증거**: 
   - 커밋 `bad93bb`, `scripts/train_will_have_shot.py` (라인 179-230)
@@ -231,23 +231,40 @@
 
 ### 진행 중인 작업
 - ✅ 피처 엔지니어링 완료 (29→54개 피처)
-- ✅ 하이퍼파라미터 튜닝 완료 (GridSearchCV, RandomizedSearchCV)
-- ✅ 앙상블 모델 완료 (Voting, Stacking)
-- ✅ 모델 학습 완료 (PR-AUC: 0.0829, Precision@10: 0.20)
+- ✅ 하이퍼파라미터 튜닝 구현 완료 (GridSearchCV, RandomizedSearchCV)
+- ✅ 앙상블 모델 구현 완료 (Voting, Stacking)
+- ⚠️ 모델 학습 완료 (목표 지표 미달)
+  - 현재 성능: PR-AUC 0.0829, Precision@10 0.20, 경기당 알림 95.42개
+  - 목표: PR-AUC ≥ 0.15, Precision@10 ≥ 0.40, 경기당 알림 10-20개
+  - 상태: 베이스라인 대비 개선(+32%)했으나 운영 목표 미달 → 개선 필요
 - 🔄 RuntimeWarning 해결 중 (피처 클리핑 및 검증 강화)
 
-### 다음 작업 예정
-1. **데이터셋 재빌드**: 새로운 피처로 데이터셋 재생성
-   ```bash
-   python scripts/build_dataset_will_have_shot.py
-   ```
-2. **모델 재학습**: 피처 엔지니어링 + 하이퍼파라미터 튜닝 + 앙상블
-   ```bash
-   python scripts/train_will_have_shot.py --tune-hyperparams --include-ensemble
-   ```
-3. **성능 비교**: 베이스라인 vs 개선된 모델 (PR-AUC, Precision@K)
-4. **피처 중요도 분석**: 모델의 feature_importances_ 또는 coefficients 분석
-5. **피처 상관관계 분석**: 중복 제거 및 선택적 피처 제거
+### 현재 모델 성능 (2026-01-02 기준)
+- **PR-AUC**: 0.0829 (목표: ≥0.15) ❌
+- **ROC-AUC**: 0.6688
+- **Precision@10**: 0.20 (목표: ≥0.40) ❌
+- **Precision@20**: 0.15
+- **경기당 알림 수**: 95.42개 (목표: 10-20개) ❌
+- **베이스라인 대비**: +32% 개선했으나 운영 목표 미달
+
+### 다음 작업 예정 (우선순위)
+1. **RuntimeWarning 해결** (진행 중)
+   - 피처 클리핑 및 검증 강화
+   - 무한대/이상치 처리 개선
+2. **피처 중요도 분석 및 선택**
+   - 모델의 feature_importances_ 또는 coefficients 분석
+   - 상관관계 높은 피처 제거
+   - 목표: 노이즈 제거로 성능 개선
+3. **Threshold 조정**
+   - 경기당 알림 수 10-20개로 조정 (현재 95개)
+   - threshold=0.70~0.75 권장
+4. **Top-K 기반 알림 시스템 구현**
+   - Threshold 대신 상위 K개만 발행
+   - Precision@10=0.2 활용
+5. **모델 개선 (재학습)**
+   - 피처 선택 후 재학습
+   - XGBoost/LightGBM 시도
+   - 목표: PR-AUC ≥0.15, Precision@10 ≥0.40
 - PR-A: package-lock.json 분리
 - PR-B: ML 기능 PR 생성 및 영향 범위 명시
 
