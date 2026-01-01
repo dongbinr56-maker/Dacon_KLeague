@@ -19,10 +19,16 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r backend/requirements.txt
+        run: pip install -r backend/requirements.txt && pip install pytest
 
       - name: Compile backend
         run: python -m compileall backend
+
+      - name: Import smoke test
+        run: PYTHONPATH=backend python -c "from app.main import app; print('import-ok')"
+
+      - name: Run backend tests
+        run: pytest -q backend
 
   frontend:
     runs-on: ubuntu-latest
@@ -40,8 +46,11 @@ jobs:
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Check lockfile sync
+        run: node ../scripts/check_lockfile_sync.js
+
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Build frontend
         run: npm run build
