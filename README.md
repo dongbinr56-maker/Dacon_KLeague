@@ -46,6 +46,7 @@ Track2 이벤트 로그(`00_data/Track2/raw_data.csv`)를 기본 입력으로 �
 - GitHub Actions CI(`.github/workflows/ci.yml`)가 정상 네트워크에서 `npm ci && npm run build`를 수행하므로, 프록시 차단 환경에서는 CI 결과로 프론트 품질을 보장하세요.
 - 프론트 의존성을 변경하면 `frontend/package-lock.json`을 `npm install`로 갱신 후 함께 커밋해야 합니다. 그렇지 않으면 CI `npm install` 단계에서 실패합니다.
 - CI는 `scripts/check_lockfile_sync.js`를 통해 package.json과 package-lock.json의 동기화 여부를 먼저 확인합니다. 누락이 있으면 lockfile을 갱신해 커밋하세요.
+- CI에서 frontend job이 실패하면 (1) lockfile sync 체크 실패 여부, (2) npm ci 의존성 설치 에러 순으로 로그를 확인하고, package-lock.json을 갱신/커밋한 뒤 재시도하세요.
 
 ## Backend-only 데모 (/demo)
 - 백엔드만으로도 API 플로우를 검증할 수 있는 정적 데모 페이지가 `/demo`/`/demo/`에 제공됩니다(Next.js 필요 없음).
