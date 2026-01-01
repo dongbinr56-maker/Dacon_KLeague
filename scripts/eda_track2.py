@@ -304,17 +304,17 @@ def main():
     }
     
     # 출력 디렉토리 생성
-    artifacts_dir = project_root / "artifacts"
-    artifacts_dir.mkdir(exist_ok=True)
+    eda_dir = project_root / "EDA"
+    eda_dir.mkdir(exist_ok=True)
     
     # JSON 저장
-    json_path = artifacts_dir / "eda_track2_summary.json"
+    json_path = eda_dir / "eda_track2_summary.json"
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
     print(f"\nSaved summary to: {json_path}")
     
     # 리포트 생성
-    report_path = artifacts_dir / "eda_track2_report.md"
+    report_path = eda_dir / "eda_track2_report.md"
     generate_report(summary, str(report_path))
     print(f"Saved report to: {report_path}")
     
