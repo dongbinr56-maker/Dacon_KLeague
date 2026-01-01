@@ -123,38 +123,54 @@
 
 ### 4) 피처 엔지니어링 (우선순위 높은 것만)
 
-- [ ] 시퀀스 피처(최근 N개 이벤트 타입/결과)
-- [ ] 이벤트 간격 통계(mean/std)
-- [ ] 최근 10초 vs 이전 10초 비교 피처(공격 강도 변화)
-- [ ] 피처 중요도/중복 제거(상관관계)
+- [x] 시퀀스 피처(최근 N개 이벤트 타입/결과) ✅
+- [x] 이벤트 간격 통계(mean/std) ✅
+- [x] 최근 10초 vs 이전 10초 비교 피처(공격 강도 변화) ✅
+- [ ] 피처 중요도/중복 제거(상관관계) ⏳ (다음 학습 실행 후 분석)
 
   **DoD**:
-  - `feature_columns.json` 버전 업데이트
-  - PR-AUC 및 Precision@K가 베이스라인 대비 개선(수치 명시)
+  - `feature_columns.json` 버전 업데이트 ⏳ (다음 데이터셋 빌드 시 자동 업데이트)
+  - PR-AUC 및 Precision@K가 베이스라인 대비 개선(수치 명시) ⏳ (다음 학습 실행 후 확인)
 
-  **증거**: 전/후 성능표, 커밋 해시
+  **증거**: 
+  - 커밋 `bad93bb`, `scripts/build_dataset_will_have_shot.py` (라인 147-239)
+  - 추가된 피처:
+    * 시퀀스: `recent_5/10_{pass|carry|shot|duel}_count`, `recent_5/10_success_rate`, `recent_5/10_mean_end_x`
+    * 간격 통계: `event_interval_mean/std/min/max`
+    * 비교 피처: `recent_10s_*`, `previous_10s_*`, `*_change` (event_count, end_x, success_rate)
+  - 전/후 성능표: (다음 학습 실행 후 업데이트)
 
 ---
 
 ### 5) 하이퍼파라미터 튜닝
 
-- [ ] LogisticRegression / HGB 튜닝(그리드 또는 Optuna)
-- [ ] game_id 그룹 기반 CV로 안정성 확인
+- [x] LogisticRegression / HGB 튜닝(그리드 또는 RandomizedSearch) ✅
+- [x] game_id 그룹 기반 CV로 안정성 확인 ✅
 
-  **DoD**: 최적 파라미터/성능/학습시간 테이블 문서화
+  **DoD**: 최적 파라미터/성능/학습시간 테이블 문서화 ⏳ (다음 학습 실행 시 `--tune-hyperparams` 플래그로 수행)
 
-  **증거**: 튜닝 결과 테이블, 커밋 해시
+  **증거**: 
+  - 커밋 `bad93bb`, `scripts/train_will_have_shot.py` (라인 92-177)
+  - LogisticRegression: GridSearchCV (C, solver, class_weight)
+  - HistGradientBoostingClassifier: RandomizedSearchCV (max_iter, learning_rate, max_depth, min_samples_leaf)
+  - GroupShuffleSplit 기반 CV로 데이터 누수 방지
+  - 튜닝 결과 테이블: (다음 학습 실행 후 업데이트)
 
 ---
 
 ### 6) 앙상블
 
-- [ ] Voting(soft/hard) 비교
-- [ ] Stacking 비교
+- [x] Voting(soft) 구현 ✅
+- [x] Stacking 구현 ✅
 
-  **DoD**: 예측 시간(서빙)과 성능의 trade-off 문서화
+  **DoD**: 예측 시간(서빙)과 성능의 trade-off 문서화 ⏳ (다음 학습 실행 시 `--include-ensemble` 플래그로 수행)
 
-  **증거**: 성능 비교표, 커밋 해시
+  **증거**: 
+  - 커밋 `bad93bb`, `scripts/train_will_have_shot.py` (라인 179-230)
+  - VotingClassifier (soft voting): LR + HGB
+  - StackingClassifier: LR + HGB → LogisticRegression (final estimator)
+  - Pipeline을 사용하여 LR의 scaled 데이터 요구사항 처리
+  - 성능 비교표: (다음 학습 실행 후 업데이트)
 
 ---
 
