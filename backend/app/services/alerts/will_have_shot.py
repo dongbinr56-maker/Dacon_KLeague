@@ -32,24 +32,41 @@ class WillHaveShotPredictor:
         """모델 로드 (실패해도 예외 발생 안 함)"""
         try:
             settings = get_settings()
-            # 모델 경로: artifacts/will_have_shot_model.joblib 또는 ENV로 지정
-            model_path = os.getenv(
-                "WILL_HAVE_SHOT_MODEL_PATH",
-                str(Path(__file__).resolve().parents[4] / "artifacts" / "will_have_shot_model.joblib")
-            )
+            
+            # enable_will_have_shot이 False면 비활성
+            if not settings.enable_will_have_shot:
+                self.error = "ML model disabled via enable_will_have_shot=False"
+                print(f"WillHaveShotPredictor: {self.error}, predictor disabled")
+                self.is_active = False
+                return
+            
+            # 모델 경로 결정: 설정 > 환경변수 > 기본 경로
+            if settings.will_have_shot_model_path:
+                model_path = settings.will_have_shot_model_path
+            else:
+                model_path = os.getenv(
+                    "WILL_HAVE_SHOT_MODEL_PATH",
+                    str(Path(__file__).resolve().parents[4] / "artifacts" / "will_have_shot_model.joblib")
+                )
             self.model_path = model_path
             
             if not os.path.exists(model_path):
                 self.error = f"Model file not found at {model_path}"
                 print(f"WillHaveShotPredictor: {self.error}, predictor disabled")
+                self.is_active = False
                 return
             
             model_data = joblib.load(model_path)
             self.model = model_data["model"]
             self.scaler = model_data.get("scaler")
             self.feature_columns = model_data.get("feature_columns", [])
-            # Precision 우선 threshold 사용
-            self.threshold = model_data.get("threshold_precision", model_data.get("threshold_f1", 0.5))
+            
+            # threshold 결정: 설정 > 모델 파일 > 기본값
+            if settings.will_have_shot_threshold is not None:
+                self.threshold = settings.will_have_shot_threshold
+            else:
+                self.threshold = model_data.get("threshold_precision", model_data.get("threshold_f1", 0.5))
+            
             self.is_active = True
             self.error = None
             print(f"WillHaveShotPredictor: Model loaded from {model_path}, threshold={self.threshold:.4f}")
