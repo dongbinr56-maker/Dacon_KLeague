@@ -4,8 +4,9 @@ set -euo pipefail
 API_BASE=${API_BASE:-http://localhost:8000/api}
 FRONTEND_BASE=${FRONTEND_BASE:-http://localhost:3000}
 LOG_PREFIX="[smoke_demo]"
+ALLOW_DEGRADED=${ALLOW_DEGRADED:-0}
 
-echo "${LOG_PREFIX} ensure docker-compose is running (backend/frontend) ..."
+echo "${LOG_PREFIX} ensure backend is running (frontend optional) ..."
 
 health() {
   curl -sS "${API_BASE}/health" | tee /tmp/smoke_health.json
@@ -39,15 +40,20 @@ echo "${health_status}" | jq .
 if echo "${health_status}" | jq -e '.status=="ok"' >/dev/null; then
   echo "${LOG_PREFIX} health ok"
 else
-  echo "${LOG_PREFIX} health degraded" >&2
+  if [[ "${ALLOW_DEGRADED}" == "1" ]]; then
+    echo "${LOG_PREFIX} health degraded (continuing because ALLOW_DEGRADED=1)" >&2
+  else
+    echo "${LOG_PREFIX} health degraded; to continue set ALLOW_DEGRADED=1" >&2
+    exit 1
+  fi
 fi
 
 echo "${LOG_PREFIX} fetch game list..."
 game_resp=$(games)
 game_id=$(echo "${game_resp}" | jq -r '.games[0].game_id')
 if [[ -z "${game_id}" || "${game_id}" == "null" ]]; then
-  echo "${LOG_PREFIX} no game_id found" >&2
-  exit 1
+  echo "${LOG_PREFIX} no game_id found (Track2 data missing?). Populate data or check /api/health track2_error." >&2
+  exit 2
 fi
 echo "${LOG_PREFIX} using game_id=${game_id}"
 
@@ -91,7 +97,7 @@ if [[ ! -s /tmp/smoke_clip.mp4 || ! -s /tmp/smoke_overlay.png ]]; then
   exit 3
 fi
 
-echo "${LOG_PREFIX} smoke demo SUCCESS"
+echo "${LOG_PREFIX} smoke demo SUCCESS (backend-only path verified; frontend optional)"
 echo "${LOG_PREFIX} session_id=${session_id}"
 echo "${LOG_PREFIX} clip=${first_clip}"
 echo "${LOG_PREFIX} overlay=${first_overlay}"

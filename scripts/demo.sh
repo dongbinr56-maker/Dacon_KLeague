@@ -4,6 +4,7 @@ set -euo pipefail
 API_BASE=${API_BASE:-http://localhost:8000/api}
 PLAYBACK_SPEED=${PLAYBACK_SPEED:-5}
 LOG_PREFIX="[demo]"
+ALLOW_DEGRADED=${ALLOW_DEGRADED:-0}
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -24,17 +25,22 @@ fail() {
   exit 1
 }
 
-health_json=$(curl -sS "${API_BASE}/health") || fail "health request failed"
+health_json=$(curl -sS "${API_BASE}/health") || fail "health request failed. Is the backend running? Try: cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 step "Health response: $(echo "${health_json}" | jq -c '{status,track2_error}')"
 status=$(echo "${health_json}" | jq -r '.status')
 if [[ "${status}" != "ok" ]]; then
-  fail "Health status is not ok (status=${status}). Check track2_error in /api/health."
+  if [[ "${ALLOW_DEGRADED}" == "1" ]]; then
+    step "Health is degraded; continuing because ALLOW_DEGRADED=1"
+  else
+    fail "Health status is not ok (status=${status}). Check track2_error in /api/health. To continue anyway, set ALLOW_DEGRADED=1."
+  fi
 fi
 
 games_json=$(curl -sS "${API_BASE}/track2/games?recommend=true") || fail "failed to load games"
 game_id=$(echo "${games_json}" | jq -r '.games[0].game_id // empty')
 if [[ -z "${game_id}" ]]; then
-  fail "No game_id found from /track2/games"
+  echo "${LOG_PREFIX} Track2 games list is empty. Populate Track2 data or check /api/health track2_error."
+  exit 2
 fi
 step "Using game_id=${game_id}"
 
@@ -85,3 +91,10 @@ step "Demo succeeded"
 echo "${LOG_PREFIX} session_id=${session_id}"
 echo "${LOG_PREFIX} clip=${clip_url}"
 echo "${LOG_PREFIX} overlay=${overlay_url}"
+echo "${LOG_PREFIX} Open http://localhost:8000/demo in your browser to explore the backend-only UI (no npm required)."
+
+if [[ "${status}" == "ok" ]]; then
+  echo "${LOG_PREFIX} /demo HEAD check:"
+  curl -sSI "${API_BASE%/api}/demo" | head -n 5 || true
+  curl -sSI "${API_BASE%/api}/demo/" | head -n 5 || true
+fi
