@@ -253,6 +253,11 @@
             overlay.target = "_blank";
             links.appendChild(overlay);
           }
+          if (!a.evidence?.clips?.length && !a.evidence?.overlays?.length) {
+            const missing = document.createElement("span");
+            missing.textContent = "no evidence available";
+            links.appendChild(missing);
+          }
           li.appendChild(links);
           list.appendChild(li);
         });
