@@ -5,7 +5,7 @@ API_BASE=${API_BASE:-http://localhost:8000/api}
 FRONTEND_BASE=${FRONTEND_BASE:-http://localhost:3000}
 LOG_PREFIX="[smoke_demo]"
 
-echo "${LOG_PREFIX} ensure docker-compose is running (backend/frontend) ..."
+echo "${LOG_PREFIX} ensure backend is running (frontend optional) ..."
 
 health() {
   curl -sS "${API_BASE}/health" | tee /tmp/smoke_health.json
@@ -91,7 +91,7 @@ if [[ ! -s /tmp/smoke_clip.mp4 || ! -s /tmp/smoke_overlay.png ]]; then
   exit 3
 fi
 
-echo "${LOG_PREFIX} smoke demo SUCCESS"
+echo "${LOG_PREFIX} smoke demo SUCCESS (backend-only path verified; frontend optional)"
 echo "${LOG_PREFIX} session_id=${session_id}"
 echo "${LOG_PREFIX} clip=${first_clip}"
 echo "${LOG_PREFIX} overlay=${first_overlay}"
