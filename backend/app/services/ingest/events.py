@@ -53,6 +53,19 @@ class EventIngestSource(IngestSource):
         events: List[EventRecord] = []
         for row in rows:
             try:
+                start_x = _try_float(row.get("start_x"))
+                start_y = _try_float(row.get("start_y"))
+                end_x = _try_float(row.get("end_x"))
+                end_y = _try_float(row.get("end_y"))
+                
+                # dx, dy 계산 (Track2에 있으면 사용, 없으면 계산)
+                dx = _try_float(row.get("dx"))
+                dy = _try_float(row.get("dy"))
+                if dx is None and start_x is not None and end_x is not None:
+                    dx = end_x - start_x
+                if dy is None and start_y is not None and end_y is not None:
+                    dy = end_y - start_y
+                
                 events.append(
                     EventRecord(
                         game_id=row.get("game_id", ""),
@@ -61,10 +74,15 @@ class EventIngestSource(IngestSource):
                         time_seconds=float(row.get("time_seconds", 0.0)),
                         type_name=row.get("type_name", ""),
                         result_name=row.get("result_name", ""),
-                        start_x=_try_float(row.get("start_x")),
-                        start_y=_try_float(row.get("start_y")),
-                        end_x=_try_float(row.get("end_x")),
-                        end_y=_try_float(row.get("end_y")),
+                        start_x=start_x,
+                        start_y=start_y,
+                        end_x=end_x,
+                        end_y=end_y,
+                        team_id=_try_int(row.get("team_id")),
+                        player_id=_try_int(row.get("player_id")),
+                        period_id=_try_int(row.get("period_id")),
+                        dx=dx,
+                        dy=dy,
                     )
                 )
             except ValueError:
