@@ -20,7 +20,7 @@ from app.schemas.session import (
     SessionStatusEvent,
     Severity,
 )
-from app.services.evidence.builder import evidence_builder
+from app.services.evidence.builder import get_evidence_builder
 from app.services.ingest.base import IngestSource
 from app.services.ingest.factory import ingest_factory
 from app.services.uploads.store import upload_store
@@ -379,7 +379,8 @@ class SessionManager:
     ) -> Alert | None:
         alert_id = str(uuid.uuid4())
         try:
-            clip_url, overlay_url = evidence_builder.build_evidence(
+            builder = get_evidence_builder()
+            clip_url, overlay_url = builder.build_evidence(
                 session_id=session_id,
                 alert_id=alert_id,
                 ts_center=ts,

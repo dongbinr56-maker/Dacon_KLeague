@@ -19,7 +19,16 @@ class EvidenceBuilder:
         settings = get_settings()
         self.evidence_root = settings.evidence_path
         self.api_prefix = settings.api_prefix
-        os.makedirs(self.evidence_root, exist_ok=True)
+        self._ensure_root()
+
+    def _ensure_root(self) -> None:
+        try:
+            os.makedirs(self.evidence_root, exist_ok=True)
+        except PermissionError as exc:
+            raise PermissionError(
+                f"Cannot create evidence directory at {self.evidence_root}. "
+                "Set EVIDENCE_PATH or STORAGE_PATH to a writable location."
+            ) from exc
 
     def build_evidence(
         self,
@@ -167,4 +176,11 @@ class EvidenceBuilder:
                 raise RuntimeError(f"Evidence file empty: {path}")
 
 
-evidence_builder = EvidenceBuilder()
+_EVIDENCE_BUILDER: EvidenceBuilder | None = None
+
+
+def get_evidence_builder() -> EvidenceBuilder:
+    global _EVIDENCE_BUILDER
+    if _EVIDENCE_BUILDER is None:
+        _EVIDENCE_BUILDER = EvidenceBuilder()
+    return _EVIDENCE_BUILDER
