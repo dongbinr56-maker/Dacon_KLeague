@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import sessions, track2, uploads, ws
@@ -46,6 +47,13 @@ app.mount(
     StaticFiles(directory=settings.evidence_path),
     name="evidence",
 )
+
+@app.get("/demo", include_in_schema=False)
+@app.get("/demo/", include_in_schema=False)
+async def demo_entrypoint() -> Any:
+    index_path = STATIC_DEMO_DIR / "index.html"
+    return FileResponse(index_path)
+
 
 app.mount(
     "/demo",

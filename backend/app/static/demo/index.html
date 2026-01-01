@@ -233,7 +233,9 @@
         alerts.forEach((a, idx) => {
           const li = document.createElement("li");
           const title = document.createElement("div");
-          title.textContent = `#${idx + 1} ${a.type || "alert"} (frame ${a.frame || "-"})`;
+          const severity = a.severity || "-";
+          const at = a.timestamp || a.frame || "-";
+          title.textContent = `#${idx + 1} ${a.type || "alert"} • severity=${severity} • at=${at}`;
           li.appendChild(title);
           const links = document.createElement("div");
           if (a.evidence?.clips?.length) {
@@ -257,6 +259,10 @@
       }
 
       function togglePolling() {
+        if (!sessionId) {
+          log("Create a session first.");
+          return;
+        }
         if (pollTimer) {
           clearInterval(pollTimer);
           pollTimer = null;
@@ -270,8 +276,10 @@
         loadAlerts();
       }
 
-      setDefaultApi();
-      fetchHealth();
+      document.addEventListener("DOMContentLoaded", () => {
+        setDefaultApi();
+        fetchHealth();
+      });
     </script>
   </body>
 </html>
