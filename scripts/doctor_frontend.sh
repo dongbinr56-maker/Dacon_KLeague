@@ -2,6 +2,8 @@
 set -euo pipefail
 
 LOG_PREFIX="[doctor_frontend]"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+NPM_NET="${DIR}/scripts/npm_net.sh"
 
 step() {
   echo "${LOG_PREFIX} $*"
@@ -20,11 +22,11 @@ run_cmd() {
 
 step "Node / npm versions"
 run_cmd "node -v" node -v
-run_cmd "npm -v" npm -v
+run_cmd "npm -v" "${NPM_NET}" -v
 
 step "npm registry settings"
-run_cmd "npm config get registry" npm config get registry
-run_cmd "npm config list (filtered)" bash -lc "npm config list -l | grep -E 'registry|proxy|https-proxy|strict-ssl|auth' || true"
+run_cmd "npm config get registry" "${NPM_NET}" config get registry
+run_cmd "npm config list (filtered)" bash -lc "${NPM_NET} config list -l | grep -E 'registry|proxy|https-proxy|strict-ssl|auth' || true"
 
 if [[ -f "$HOME/.npmrc" ]]; then
   step "~/.npmrc exists (showing non-sensitive lines)"
@@ -39,6 +41,6 @@ if [[ -f ".npmrc" ]]; then
 fi
 
 step "Probe @types/node from public registry"
-run_cmd "npm view @types/node version --registry=https://registry.npmjs.org/" npm view @types/node version --registry=https://registry.npmjs.org/
+run_cmd "npm view @types/node version --registry=https://registry.npmjs.org/" "${NPM_NET}" view @types/node version --registry=https://registry.npmjs.org/
 
 step "Doctor finished"
