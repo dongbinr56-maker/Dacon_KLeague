@@ -16,21 +16,28 @@
 - [ ] `package-lock.json` 관련 커밋을 `fix/lockfile-sync`로 분리하고 PR 생성
 
   **DoD**: PR 본문에 아래 3개 포함
-  1. `git diff --name-only origin/main...HEAD`
-  2. `cd frontend && npm ci` 실행 로그(요약)
-  3. `cd frontend && npm run build` 실행 로그(요약)
+  1. `git diff --name-only origin/main...HEAD` ✅ (준비됨: `docs/presentation/PR_PREPARATION.md`)
+  2. `cd frontend && npm ci` 실행 로그(요약) ⏳ (실행 필요)
+  3. `cd frontend && npm run build` 실행 로그(요약) ⏳ (실행 필요)
 
-  **증거**: PR 링크, 커밋 해시, 실행 로그 캡처
+  **증거**: 
+  - 커밋 해시: `fb1c656`
+  - PR 템플릿: `docs/presentation/PR_PREPARATION.md`
+  - 실행 로그: (서버 실행 후 수집)
 
 #### PR-B (ML 기능)
 - [ ] ML 기능을 `feat/will-have-shot-ml` 브랜치로 분리하고 PR 생성
 
   **DoD**: PR 본문에 아래 3개 포함
-  1. `git diff --name-only origin/main...HEAD`
-  2. `/api/health`에 ML 상태 포함 스크린샷/응답 예시
-  3. "모델 파일 없음" 상태에서 서비스 정상 동작 확인 로그
+  1. `git diff --name-only origin/main...HEAD` ✅ (준비됨: `docs/presentation/PR_PREPARATION.md`)
+  2. `/api/health`에 ML 상태 포함 스크린샷/응답 예시 ✅ (준비됨: JSON 예시 포함)
+  3. "모델 파일 없음" 상태에서 서비스 정상 동작 확인 로그 ⏳ (서버 실행 후 수집)
 
-  **증거**: PR 링크, 커밋 해시, health 응답, 테스트 로그
+  **증거**: 
+  - 커밋 해시: `dd8ba0f`, `5622b8a`, `0f5a7a5` 등
+  - PR 템플릿: `docs/presentation/PR_PREPARATION.md`
+  - Health 응답 예시: (위 문서 참조)
+  - 테스트 로그: (서버 실행 후 수집)
 
 #### PR 영향 범위 명시
 - [ ] PR 영향 범위 명시(필수 템플릿 적용)
