@@ -1,8 +1,10 @@
 import os
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import sessions, track2, uploads, ws
@@ -15,6 +17,9 @@ app = FastAPI(title=settings.app_name)
 
 os.makedirs(settings.storage_path, exist_ok=True)
 os.makedirs(settings.evidence_path, exist_ok=True)
+
+STATIC_DEMO_DIR = Path(__file__).resolve().parent / "static" / "demo"
+STATIC_DEMO_DIR.mkdir(parents=True, exist_ok=True)
 
 app.add_middleware(
     CORSMiddleware,
@@ -36,21 +41,6 @@ except Exception as exc:  # noqa: BLE001
 async def root():
     return {"message": "KLeague tactical feedback backend", "service": settings.app_name}
 
-app.mount(
-    f"{settings.api_prefix}/evidence",
-    StaticFiles(directory=settings.evidence_path),
-    name="evidence",
-)
-
-
-@app.get(f"{settings.api_prefix}/health")
-async def health() -> Dict[str, Any]:
-    return {
-        "status": "ok" if track2_error is None else "degraded",
-        "track2": track2_validation,
-        "track2_error": track2_error,
-    }
-
 
 app.mount(
     f"{settings.api_prefix}/evidence",
@@ -58,21 +48,17 @@ app.mount(
     name="evidence",
 )
 
-
-@app.get(f"{settings.api_prefix}/health")
-async def health() -> Dict[str, Any]:
-    return {
-        "status": "ok" if track2_error is None else "degraded",
-        "track2": track2_validation,
-        "track2_error": track2_error,
-        "demo_mode": settings.demo_mode,
-    }
+@app.get("/demo", include_in_schema=False)
+@app.get("/demo/", include_in_schema=False)
+async def demo_entrypoint() -> Any:
+    index_path = STATIC_DEMO_DIR / "index.html"
+    return FileResponse(index_path)
 
 
 app.mount(
-    f"{settings.api_prefix}/evidence",
-    StaticFiles(directory=settings.evidence_path),
-    name="evidence",
+    "/demo",
+    StaticFiles(directory=STATIC_DEMO_DIR, html=True),
+    name="demo",
 )
 
 
@@ -84,47 +70,6 @@ async def health() -> Dict[str, Any]:
         "track2_error": track2_error,
         "demo_mode": settings.demo_mode,
     }
-
-
-app.mount(
-    f"{settings.api_prefix}/evidence",
-    StaticFiles(directory=settings.evidence_path),
-    name="evidence",
-)
-
-
-@app.get(f"{settings.api_prefix}/health")
-async def health() -> Dict[str, Any]:
-    return {
-        "status": "ok" if track2_error is None else "degraded",
-        "track2": track2_validation,
-        "track2_error": track2_error,
-        "demo_mode": settings.demo_mode,
-    }
-
-
-app.mount(
-    f"{settings.api_prefix}/evidence",
-    StaticFiles(directory=settings.evidence_path),
-    name="evidence",
-)
-
-
-@app.get(f"{settings.api_prefix}/health")
-async def health() -> Dict[str, Any]:
-    return {
-        "status": "ok" if track2_error is None else "degraded",
-        "track2": track2_validation,
-        "track2_error": track2_error,
-        "demo_mode": settings.demo_mode,
-    }
-
-
-app.mount(
-    f"{settings.api_prefix}/evidence",
-    StaticFiles(directory=settings.evidence_path),
-    name="evidence",
-)
 
 
 app.include_router(sessions.router, prefix=f"{settings.api_prefix}/sessions", tags=["sessions"])
