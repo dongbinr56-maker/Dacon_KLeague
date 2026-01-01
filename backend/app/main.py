@@ -1,4 +1,3 @@
-import os
 import inspect
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -25,8 +24,6 @@ STATIC_DEMO_DIR = Path(__file__).resolve().parent / "static" / "demo"
 
 
 async def lifespan(app: FastAPI):  # pragma: no cover - runtime path
-    os.makedirs(settings.storage_path, exist_ok=True)
-    os.makedirs(settings.evidence_path, exist_ok=True)
     yield
 
 
