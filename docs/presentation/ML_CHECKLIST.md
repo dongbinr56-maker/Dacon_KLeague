@@ -129,8 +129,8 @@
 - [ ] 피처 중요도/중복 제거(상관관계) ⏳ (다음 학습 실행 후 분석)
 
   **DoD**:
-  - `feature_columns.json` 버전 업데이트 ⏳ (다음 데이터셋 빌드 시 자동 업데이트)
-  - PR-AUC 및 Precision@K가 베이스라인 대비 개선(수치 명시) ⏳ (다음 학습 실행 후 확인)
+  - `feature_columns.json` 버전 업데이트 ✅ (29개 → 54개 피처로 증가)
+  - PR-AUC 및 Precision@K가 베이스라인 대비 개선(수치 명시) ⏳ (학습 실행 중)
 
   **증거**: 
   - 커밋 `bad93bb`, `scripts/build_dataset_will_have_shot.py` (라인 147-239)
