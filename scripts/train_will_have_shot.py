@@ -378,7 +378,7 @@ def main():
     joblib.dump(model_data, model_path)
     print(f"\nSaved model to: {model_path}")
     
-    # 메트릭 저장
+    # 메트릭 저장 (운영 지표 포함)
     metrics_path = artifacts_dir / "will_have_shot_metrics.json"
     with open(metrics_path, "w", encoding="utf-8") as f:
         json.dump(
@@ -387,6 +387,13 @@ def main():
                 "all_models": all_metrics,
                 "test_metrics": test_metrics,
                 "positive_ratio": float(y_test.mean()),
+                # 운영 지표 (발표용)
+                "operational_metrics": {
+                    "threshold_sweep": test_metrics.get("threshold_sweep", []),
+                    "precision_at_10": test_metrics.get("precision_at_10", 0.0),
+                    "precision_at_20": test_metrics.get("precision_at_20", 0.0),
+                    "alerts_per_game_at_best_threshold": test_metrics.get("alerts_per_game_at_best_threshold"),
+                },
             },
             f,
             indent=2,

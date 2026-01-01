@@ -27,6 +27,23 @@ Track2 이벤트 로그(`00_data/Track2/raw_data.csv`)를 기본 입력으로 �
 - `GET /api/sessions/{id}/alerts` / `WS /api/ws/sessions/{id}` : 알림 수신
 - Evidence 정적 서빙: `/api/evidence/{session_id}/clip_{alert_id}.mp4`, `overlay_{alert_id}.png`
 
+## ML 모델 설정
+
+will_have_shot ML 모델을 활성화/비활성화하려면 환경변수를 설정하세요:
+
+```bash
+# ML 모델 활성화 (기본값: true)
+ENABLE_WILL_HAVE_SHOT=true
+
+# 모델 파일 경로 지정 (선택사항, 기본값: ./artifacts/will_have_shot_model.joblib)
+WILL_HAVE_SHOT_MODEL_PATH=./artifacts/will_have_shot_model.joblib
+
+# 알림 threshold 지정 (선택사항, 기본값: 모델 파일에서 읽음)
+WILL_HAVE_SHOT_THRESHOLD=0.5
+```
+
+모델 파일이 없거나 `ENABLE_WILL_HAVE_SHOT=false`로 설정하면 ML 예측은 비활성화되지만 서비스는 정상 동작합니다. `/api/health` 엔드포인트에서 ML 상태를 확인할 수 있습니다.
+
 ## 데이터/재현성
 - Track2가 기본 입력이며, 외부 데이터는 필요하지 않습니다.
 - 데이터 경로 기본값은 `backend/app/core/config.py`에 정의되어 있으며 ENV로 덮어쓸 수 있습니다. 데이터가 없으면 `/api/health`가 degraded 상태와 원인을 반환합니다.
