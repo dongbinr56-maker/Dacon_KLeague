@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KLeague Backend Demo</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        margin: 0 auto;
+        padding: 1.5rem;
+        max-width: 900px;
+        line-height: 1.5;
+      }
+      header {
+        margin-bottom: 1rem;
+      }
+      section {
+        border: 1px solid #444;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+      }
+      button {
+        padding: 0.5rem 0.75rem;
+        margin-right: 0.5rem;
+      }
+      code {
+        background: rgba(255, 255, 255, 0.05);
+        padding: 0.25rem 0.35rem;
+        border-radius: 4px;
+      }
+      ul {
+        padding-left: 1.25rem;
+      }
+      .log {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        white-space: pre-wrap;
+        background: rgba(255, 255, 255, 0.05);
+        padding: 0.75rem;
+        border-radius: 8px;
+        max-height: 240px;
+        overflow: auto;
+      }
+      .row {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      label {
+        font-weight: 600;
+      }
+      .pill {
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        border-radius: 999px;
+        background: #243447;
+      }
+      a {
+        color: #61dafb;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>KLeague Backend Demo</h1>
+      <p>Use this page to exercise the API without the Next.js frontend.</p>
+      <div class="row">
+        <label for="apiBase">API base</label>
+        <input id="apiBase" size="40" />
+        <button onclick="setDefaultApi()">Set to origin</button>
+      </div>
+      <p class="pill">Flow: health → games → session → start → alerts (poll)</p>
+    </header>
+
+    <section>
+      <h2>Health</h2>
+      <div class="row">
+        <button onclick="fetchHealth()">Check /health</button>
+        <span id="healthStatus"></span>
+      </div>
+    </section>
+
+    <section>
+      <h2>Games</h2>
+      <div class="row">
+        <button onclick="loadGames()">Load games</button>
+        <select id="gameSelect"></select>
+      </div>
+      <p id="gameInfo"></p>
+    </section>
+
+    <section>
+      <h2>Session</h2>
+      <div class="row">
+        <button onclick="createSession()">Create session</button>
+        <button onclick="startSession()">Start session</button>
+        <span id="sessionStatus"></span>
+      </div>
+    </section>
+
+    <section>
+      <h2>Alerts (poll every 5s)</h2>
+      <div class="row">
+        <button onclick="togglePolling()">
+          <span id="pollButtonLabel">Start polling</span>
+        </button>
+        <span id="pollStatus"></span>
+      </div>
+      <ul id="alertsList"></ul>
+    </section>
+
+    <section>
+      <h2>Log</h2>
+      <div id="log" class="log"></div>
+    </section>
+
+    <script>
+      let sessionId = null;
+      let pollTimer = null;
+
+      function log(message) {
+        const el = document.getElementById("log");
+        const now = new Date().toISOString();
+        el.textContent = `[${now}] ${message}\n` + el.textContent;
+      }
+
+      function apiBase() {
+        return document.getElementById("apiBase").value || `${window.location.origin}/api`;
+      }
+
+      function setDefaultApi() {
+        document.getElementById("apiBase").value = `${window.location.origin}/api`;
+      }
+
+      async function fetchJson(path, options = {}) {
+        const resp = await fetch(`${apiBase()}${path}`, {
+          headers: { "Content-Type": "application/json" },
+          ...options,
+        });
+        if (!resp.ok) {
+          const text = await resp.text();
+          throw new Error(`${resp.status} ${resp.statusText}: ${text}`);
+        }
+        return resp.json();
+      }
+
+      async function fetchHealth() {
+        try {
+          const data = await fetchJson("/health");
+          document.getElementById("healthStatus").textContent = `status=${data.status}, demo_mode=${data.demo_mode}`;
+          log(`Health: ${JSON.stringify(data)}`);
+        } catch (err) {
+          log(`Health error: ${err.message}`);
+        }
+      }
+
+      async function loadGames() {
+        try {
+          const data = await fetchJson("/track2/games?recommend=true");
+          const select = document.getElementById("gameSelect");
+          select.innerHTML = "";
+          (data.games || []).forEach((g) => {
+            const opt = document.createElement("option");
+            opt.value = g.game_id;
+            opt.textContent = `${g.game_id} — ${g.home_team} vs ${g.away_team}`;
+            select.appendChild(opt);
+          });
+          document.getElementById("gameInfo").textContent = `${data.games?.length || 0} games loaded`;
+          log(`Loaded games (${data.games?.length || 0})`);
+        } catch (err) {
+          log(`Load games error: ${err.message}`);
+        }
+      }
+
+      async function createSession() {
+        const select = document.getElementById("gameSelect");
+        const gameId = select.value;
+        if (!gameId) {
+          log("Select a game first.");
+          return;
+        }
+        const payload = {
+          source_type: "event_log",
+          mode: "offline_realtime",
+          game_id: gameId,
+          playback_speed: 5,
+        };
+        try {
+          const data = await fetchJson("/sessions", { method: "POST", body: JSON.stringify(payload) });
+          sessionId = data.id;
+          document.getElementById("sessionStatus").textContent = `session=${sessionId}`;
+          log(`Session created: ${sessionId}`);
+        } catch (err) {
+          log(`Create session error: ${err.message}`);
+        }
+      }
+
+      async function startSession() {
+        if (!sessionId) {
+          log("Create a session first.");
+          return;
+        }
+        try {
+          await fetchJson(`/sessions/${sessionId}/start`, { method: "POST" });
+          log(`Session started: ${sessionId}`);
+        } catch (err) {
+          log(`Start session error: ${err.message}`);
+        }
+      }
+
+      async function loadAlerts() {
+        if (!sessionId) {
+          log("Create a session first.");
+          return;
+        }
+        try {
+          const data = await fetchJson(`/sessions/${sessionId}/alerts`);
+          renderAlerts(data.alerts || []);
+          log(`Alerts: ${data.alerts?.length || 0}`);
+        } catch (err) {
+          log(`Alerts error: ${err.message}`);
+        }
+      }
+
+      function renderAlerts(alerts) {
+        const list = document.getElementById("alertsList");
+        list.innerHTML = "";
+        alerts.forEach((a, idx) => {
+          const li = document.createElement("li");
+          const title = document.createElement("div");
+          const severity = a.severity || "-";
+          const at = a.timestamp || a.frame || "-";
+          title.textContent = `#${idx + 1} ${a.type || "alert"} • severity=${severity} • at=${at}`;
+          li.appendChild(title);
+          const links = document.createElement("div");
+          if (a.evidence?.clips?.length) {
+            const clip = document.createElement("a");
+            clip.href = a.evidence.clips[0];
+            clip.textContent = "clip";
+            clip.target = "_blank";
+            links.appendChild(clip);
+          }
+          if (a.evidence?.overlays?.length) {
+            const overlay = document.createElement("a");
+            overlay.href = a.evidence.overlays[0];
+            overlay.textContent = "overlay";
+            overlay.style.marginLeft = "0.5rem";
+            overlay.target = "_blank";
+            links.appendChild(overlay);
+          }
+          li.appendChild(links);
+          list.appendChild(li);
+        });
+      }
+
+      function togglePolling() {
+        if (!sessionId) {
+          log("Create a session first.");
+          return;
+        }
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+          document.getElementById("pollButtonLabel").textContent = "Start polling";
+          document.getElementById("pollStatus").textContent = "stopped";
+          return;
+        }
+        pollTimer = setInterval(loadAlerts, 5000);
+        document.getElementById("pollButtonLabel").textContent = "Stop polling";
+        document.getElementById("pollStatus").textContent = "running";
+        loadAlerts();
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        setDefaultApi();
+        fetchHealth();
+      });
+    </script>
+  </body>
+</html>
