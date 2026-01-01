@@ -3,7 +3,7 @@ from app.schemas.session import SessionCreateRequest, SessionSourceType
 from app.services.data.track2 import ensure_game_id_exists, ensure_track2_ready
 from app.services.ingest.base import FileIngestSource, IngestSource, RtspIngestSource, WebcamIngestSource
 from app.services.ingest.events import EventIngestSource
-from app.services.uploads.store import upload_store
+from app.services.uploads.store import get_upload_store
 
 
 class IngestFactory:
@@ -15,7 +15,7 @@ class IngestFactory:
             ensure_track2_ready()
             path = payload.dataset_path or payload.path
             if not path and payload.file_id:
-                path = upload_store.resolve_path(payload.file_id)
+                path = get_upload_store().resolve_path(payload.file_id)
             if not path:
                 settings = get_settings()
                 path = settings.events_data_path
@@ -29,7 +29,7 @@ class IngestFactory:
         if payload.source_type == SessionSourceType.file:
             path = payload.path
             if not path and payload.file_id:
-                path = upload_store.resolve_path(payload.file_id)
+                path = get_upload_store().resolve_path(payload.file_id)
             if not path:
                 raise ValueError("File path is required for file source")
             return FileIngestSource(path, fps=payload.fps)

@@ -23,7 +23,7 @@ from app.schemas.session import (
 from app.services.evidence.builder import get_evidence_builder
 from app.services.ingest.base import IngestSource
 from app.services.ingest.factory import ingest_factory
-from app.services.uploads.store import upload_store
+from app.services.uploads.store import get_upload_store
 
 
 @dataclass
@@ -181,13 +181,13 @@ class SessionManager:
             if payload.path:
                 return payload.path
             if payload.file_id:
-                return upload_store.resolve_path(payload.file_id) or payload.file_id
+                return get_upload_store().resolve_path(payload.file_id) or payload.file_id
             return settings.events_data_path
         if payload.source_type == SessionSourceType.file:
             if payload.path:
                 return payload.path
             if payload.file_id:
-                return upload_store.resolve_path(payload.file_id) or payload.file_id
+                return get_upload_store().resolve_path(payload.file_id) or payload.file_id
             return ""
         if payload.source_type == SessionSourceType.rtsp:
             return payload.rtsp_url or ""
@@ -197,7 +197,7 @@ class SessionManager:
         if payload.source_type != SessionSourceType.file:
             return None
         if payload.file_id:
-            return upload_store.resolve_download_url(payload.file_id)
+            return get_upload_store().resolve_download_url(payload.file_id)
         return None
 
     async def _push_status(self, state: SessionState, status: SessionStatus, detail: str) -> None:
