@@ -15,12 +15,6 @@ settings = get_settings()
 
 app = FastAPI(title=settings.app_name)
 
-os.makedirs(settings.storage_path, exist_ok=True)
-os.makedirs(settings.evidence_path, exist_ok=True)
-
-STATIC_DEMO_DIR = Path(__file__).resolve().parent / "static" / "demo"
-STATIC_DEMO_DIR.mkdir(parents=True, exist_ok=True)
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_origin],
@@ -36,6 +30,9 @@ try:  # pragma: no cover - startup validation
 except Exception as exc:  # noqa: BLE001
     track2_error = str(exc)
 
+STATIC_DEMO_DIR = Path(__file__).resolve().parent / "static" / "demo"
+Path(settings.evidence_path).mkdir(parents=True, exist_ok=True)
+STATIC_DEMO_DIR.mkdir(parents=True, exist_ok=True)
 
 @app.get("/")
 async def root():
