@@ -44,6 +44,8 @@ Track2 이벤트 로그(`00_data/Track2/raw_data.csv`)를 기본 입력으로 �
 - Codex 같은 제한망에서는 `registry.npmjs.org`가 403으로 차단되어 프론트 빌드가 불가합니다.
 - `scripts/build_frontend.sh`는 사전 probe 후 접근이 막혀 있으면 exit code 2와 함께 “NPM_REGISTRY를 내부 미러로 지정하거나 CI에서 빌드” 안내를 출력합니다.
 - GitHub Actions CI(`.github/workflows/ci.yml`)가 정상 네트워크에서 `npm ci && npm run build`를 수행하므로, 프록시 차단 환경에서는 CI 결과로 프론트 품질을 보장하세요.
+- 프론트 의존성을 변경하면 `frontend/package-lock.json`을 `npm install`로 갱신 후 함께 커밋해야 합니다. 그렇지 않으면 CI `npm install` 단계에서 실패합니다.
+- CI는 `scripts/check_lockfile_sync.js`를 통해 package.json과 package-lock.json의 동기화 여부를 먼저 확인합니다. 누락이 있으면 lockfile을 갱신해 커밋하세요.
 
 ## Backend-only 데모 (/demo)
 - 백엔드만으로도 API 플로우를 검증할 수 있는 정적 데모 페이지가 `/demo`/`/demo/`에 제공됩니다(Next.js 필요 없음).
