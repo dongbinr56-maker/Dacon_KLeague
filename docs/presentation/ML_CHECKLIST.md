@@ -230,9 +230,22 @@
 - **테스트 필요**: 다음 학습 실행 시 metrics.json에 `operational_metrics` 섹션 확인
 
 ### 진행 중인 작업
-- PR 분리 작업 준비 중
+- 피처 엔지니어링 완료 (다음 데이터셋 빌드 및 학습 실행 필요)
+- 하이퍼파라미터 튜닝 구현 완료 (다음 학습 실행 시 `--tune-hyperparams` 사용)
+- 앙상블 모델 구현 완료 (다음 학습 실행 시 `--include-ensemble` 사용)
 
 ### 다음 작업 예정
+1. **데이터셋 재빌드**: 새로운 피처로 데이터셋 재생성
+   ```bash
+   python scripts/build_dataset_will_have_shot.py
+   ```
+2. **모델 재학습**: 피처 엔지니어링 + 하이퍼파라미터 튜닝 + 앙상블
+   ```bash
+   python scripts/train_will_have_shot.py --tune-hyperparams --include-ensemble
+   ```
+3. **성능 비교**: 베이스라인 vs 개선된 모델 (PR-AUC, Precision@K)
+4. **피처 중요도 분석**: 모델의 feature_importances_ 또는 coefficients 분석
+5. **피처 상관관계 분석**: 중복 제거 및 선택적 피처 제거
 - PR-A: package-lock.json 분리
 - PR-B: ML 기능 PR 생성 및 영향 범위 명시
 
