@@ -236,8 +236,6 @@ def train_ensemble_models(
     
     # 1. Voting Classifier (Soft)
     # Voting은 원본 데이터를 사용하므로, LR을 Pipeline으로 래핑
-    from sklearn.pipeline import Pipeline
-    
     print("\nTraining VotingClassifier (soft)...")
     lr_pipeline = Pipeline([("scaler", scaler), ("lr", lr_scaled)])
     voting_soft = VotingClassifier(
