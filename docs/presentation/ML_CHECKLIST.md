@@ -123,38 +123,54 @@
 
 ### 4) 피처 엔지니어링 (우선순위 높은 것만)
 
-- [ ] 시퀀스 피처(최근 N개 이벤트 타입/결과)
-- [ ] 이벤트 간격 통계(mean/std)
-- [ ] 최근 10초 vs 이전 10초 비교 피처(공격 강도 변화)
-- [ ] 피처 중요도/중복 제거(상관관계)
+- [x] 시퀀스 피처(최근 N개 이벤트 타입/결과) ✅
+- [x] 이벤트 간격 통계(mean/std) ✅
+- [x] 최근 10초 vs 이전 10초 비교 피처(공격 강도 변화) ✅
+- [x] 피처 중요도/중복 제거(상관관계) ✅ (분석 완료)
 
   **DoD**:
-  - `feature_columns.json` 버전 업데이트
-  - PR-AUC 및 Precision@K가 베이스라인 대비 개선(수치 명시)
+  - `feature_columns.json` 버전 업데이트 ✅ (29개 → 54개 피처로 증가)
+  - PR-AUC 및 Precision@K가 베이스라인 대비 개선(수치 명시) ⏳ (학습 실행 중)
 
-  **증거**: 전/후 성능표, 커밋 해시
+  **증거**: 
+  - 커밋 `bad93bb`, `scripts/build_dataset_will_have_shot.py` (라인 147-239)
+  - 추가된 피처:
+    * 시퀀스: `recent_5/10_{pass|carry|shot|duel}_count`, `recent_5/10_success_rate`, `recent_5/10_mean_end_x`
+    * 간격 통계: `event_interval_mean/std/min/max`
+    * 비교 피처: `recent_10s_*`, `previous_10s_*`, `*_change` (event_count, end_x, success_rate)
+  - 전/후 성능표: (다음 학습 실행 후 업데이트)
 
 ---
 
 ### 5) 하이퍼파라미터 튜닝
 
-- [ ] LogisticRegression / HGB 튜닝(그리드 또는 Optuna)
-- [ ] game_id 그룹 기반 CV로 안정성 확인
+- [x] LogisticRegression / HGB 튜닝(그리드 또는 RandomizedSearch) ✅
+- [x] game_id 그룹 기반 CV로 안정성 확인 ✅
 
-  **DoD**: 최적 파라미터/성능/학습시간 테이블 문서화
+  **DoD**: 최적 파라미터/성능/학습시간 테이블 문서화 ⚠️ (학습 완료, metrics.json에 저장됨, 하지만 목표 지표 미달로 재튜닝 필요)
 
-  **증거**: 튜닝 결과 테이블, 커밋 해시
+  **증거**: 
+  - 커밋 `bad93bb`, `scripts/train_will_have_shot.py` (라인 92-177)
+  - LogisticRegression: GridSearchCV (C, solver, class_weight)
+  - HistGradientBoostingClassifier: RandomizedSearchCV (max_iter, learning_rate, max_depth, min_samples_leaf)
+  - GroupShuffleSplit 기반 CV로 데이터 누수 방지
+  - 튜닝 결과 테이블: (다음 학습 실행 후 업데이트)
 
 ---
 
 ### 6) 앙상블
 
-- [ ] Voting(soft/hard) 비교
-- [ ] Stacking 비교
+- [x] Voting(soft) 구현 ✅
+- [x] Stacking 구현 ✅
 
-  **DoD**: 예측 시간(서빙)과 성능의 trade-off 문서화
+  **DoD**: 예측 시간(서빙)과 성능의 trade-off 문서화 ⚠️ (학습 완료, Stacking이 최고 성능이지만 목표 지표 미달로 개선 필요)
 
-  **증거**: 성능 비교표, 커밋 해시
+  **증거**: 
+  - 커밋 `bad93bb`, `scripts/train_will_have_shot.py` (라인 179-230)
+  - VotingClassifier (soft voting): LR + HGB
+  - StackingClassifier: LR + HGB → LogisticRegression (final estimator)
+  - Pipeline을 사용하여 LR의 scaled 데이터 요구사항 처리
+  - 성능 비교표: (다음 학습 실행 후 업데이트)
 
 ---
 
@@ -214,9 +230,88 @@
 - **테스트 필요**: 다음 학습 실행 시 metrics.json에 `operational_metrics` 섹션 확인
 
 ### 진행 중인 작업
-- PR 분리 작업 준비 중
+- ✅ 피처 엔지니어링 완료 (29→54개 피처)
+- ✅ 하이퍼파라미터 튜닝 구현 완료 (GridSearchCV, RandomizedSearchCV)
+- ✅ 앙상블 모델 구현 완료 (Voting, Stacking)
+- ⚠️ 모델 학습 완료 (목표 지표 미달)
+  - 현재 성능: PR-AUC 0.0829, Precision@10 0.20, 경기당 알림 95.42개
+  - 목표: PR-AUC ≥ 0.15, Precision@10 ≥ 0.40, 경기당 알림 10-20개
+  - 상태: 베이스라인 대비 개선(+32%)했으나 운영 목표 미달 → 개선 필요
+- 🔄 RuntimeWarning 해결 중 (피처 클리핑 및 검증 강화)
 
-### 다음 작업 예정
+### 현재 모델 성능 (2026-01-02 기준)
+- **PR-AUC**: 0.0829 (목표: ≥0.15) ❌
+- **ROC-AUC**: 0.6688
+- **Precision@10**: 0.20 (목표: ≥0.40) ❌
+- **Precision@20**: 0.15
+- **경기당 알림 수**: 95.42개 (목표: 10-20개) ❌
+- **베이스라인 대비**: +32% 개선했으나 운영 목표 미달
+
+### 진행 상황 요약 (2026-01-02)
+
+#### 완료된 작업 ✅
+1. **RuntimeWarning 해결**
+   - 피처 클리핑 및 검증 강화 완료
+   - 무한대/이상치 처리 개선 완료
+   - 커밋: `0b53632`
+
+2. **피처 중요도 분석 및 선택**
+   - 모델의 feature_importances_ 또는 coefficients 분석 완료
+   - 상관관계 높은 피처 쌍 식별 완료
+   - 상위 19개 피처 선택 (누적 중요도 80%)
+   - 분석 스크립트: `scripts/analyze_feature_importance.py`
+   - 커밋: `f301709`
+
+3. **GPT 데이터 전략 리서치 문서화**
+   - AIHub 데이터셋 구성 및 활용 방안
+   - 무료/공개 추적 데이터셋 추천
+   - Track2 이벤트 로그만으로 가능한 보완 방법
+   - PR-AUC/Precision@10 개선 전략 우선순위
+   - 문서: `docs/presentation/GPT_DATA_STRATEGY.md`
+   - 커밋: `142bf24`
+
+#### 진행 중인 작업 🔄
+1. **피처 선택 후 재학습** (완료, 성능 하락 확인)
+   - 선택된 19개 피처로 데이터셋 필터링 ✅
+   - 학습 스크립트에 `--selected-features-path` 옵션 추가 ✅
+   - 모델 재학습 완료 (하이퍼파라미터 튜닝 + 앙상블 포함) ✅
+   - **결과**: 성능 하락 확인
+     - PR-AUC: 0.0829 → 0.0713 (-14% 하락)
+     - Precision@10: 0.20 → 0.20 (동일)
+     - 경기당 알림: 95.42 → 216.45개 (더 악화)
+   - **분석 필요**: 피처 축소가 오히려 성능을 떨어뜨림
+   - 커밋: `142bf24`
+
+#### 다음 작업 예정 (우선순위) - GPT 답변 반영
+
+1. ✅ **시퀀스 피처 다층화** (완료)
+   - 여러 시간 범위(1초/5초/10초/20초) 동시 반영 ✅
+   - 윈도우 기반 집계 생성 (이동 평균/분산/최대/최소) ✅
+   - 각 윈도우별: 이벤트 수, 타입별 카운트, 성공률, 평균/최대 x좌표, 간격 통계 ✅
+   - 커밋: `2ccccd3`
+
+2. ✅ **상호작용 피처 생성** (완료)
+   - 피처 쌍의 곱/비율/차이 생성 ✅
+   - 상호작용 피처 8개 추가 (pass_success_interaction, final_third_event_density 등) ✅
+   - 커밋: `2ccccd3`
+
+3. **데이터셋 재빌드** (진행 중)
+   - 새로운 피처로 데이터셋 재생성
+   - 예상 피처 수: 53개 → 약 100개 이상 (시퀀스 다층화 + 상호작용)
+
+4. **모델 재학습** (다음 단계)
+   - 새로운 피처로 모델 재학습
+   - 성능 비교 (PR-AUC, Precision@10)
+   - 목표: PR-AUC ≥0.15, Precision@10 ≥0.40
+
+4. **피처 선택 방법 개선** (중기)
+   - Wrapper 방법 또는 SHAP 기반 재선정
+   - 교차 검증 기반 선택
+   - 상호작용을 반영한 중요도 측정
+
+5. **Threshold/랭킹 후처리** (단기)
+   - 경기당 알림 수 조절 (10-20개 목표)
+   - Top-K 기반 알림 시스템 구현
 - PR-A: package-lock.json 분리
 - PR-B: ML 기능 PR 생성 및 영향 범위 명시
 

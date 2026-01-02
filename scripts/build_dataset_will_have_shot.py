@@ -144,12 +144,207 @@ def extract_features(events: pd.DataFrame) -> Dict[str, float]:
     else:
         features["possession_changes"] = 0.0
     
+    # 7. 시퀀스 피처 다층화 (1초/5초/10초/20초 윈도우)
+    # GPT 답변: 여러 시간 범위를 동시에 반영하여 짧은 순간의 패턴 + 긴 관점의 흐름을 동시에 학습
+    if len(events) > 0:
+        current_time = events["time_seconds"].max()
+        
+        # 시간 기반 윈도우 (1초, 5초, 10초, 20초)
+        for window_sec in [1, 5, 10, 20]:
+            window_events = events[events["time_seconds"] >= current_time - window_sec]
+            
+            if len(window_events) > 0:
+                window_types = window_events["type_name"].value_counts()
+                # 주요 타입들의 빈도
+                for t in ["Pass", "Carry", "Shot", "Duel"]:
+                    features[f"past_{window_sec}s_{t.lower()}_count"] = float(window_types.get(t, 0))
+                
+                # 윈도우 내 이벤트 수
+                features[f"past_{window_sec}s_event_count"] = float(len(window_events))
+                
+                # 윈도우 내 성공률
+                window_successful = (window_events["result_name"] == "Successful").sum()
+                features[f"past_{window_sec}s_success_rate"] = float(window_successful / len(window_events))
+                
+                # 윈도우 내 평균 x 좌표 (공격 방향)
+                if window_events["end_x"].notna().any():
+                    features[f"past_{window_sec}s_mean_end_x"] = float(window_events["end_x"].mean())
+                    features[f"past_{window_sec}s_max_end_x"] = float(window_events["end_x"].max())
+                else:
+                    features[f"past_{window_sec}s_mean_end_x"] = 0.0
+                    features[f"past_{window_sec}s_max_end_x"] = 0.0
+                
+                # 윈도우 내 이벤트 간격 통계
+                if len(window_events) > 1:
+                    window_time_diffs = window_events["time_seconds"].diff().dropna()
+                    if len(window_time_diffs) > 0:
+                        features[f"past_{window_sec}s_interval_mean"] = float(window_time_diffs.mean())
+                        features[f"past_{window_sec}s_interval_std"] = float(window_time_diffs.std() if len(window_time_diffs) > 1 else 0.0)
+                    else:
+                        features[f"past_{window_sec}s_interval_mean"] = 0.0
+                        features[f"past_{window_sec}s_interval_std"] = 0.0
+                else:
+                    features[f"past_{window_sec}s_interval_mean"] = 0.0
+                    features[f"past_{window_sec}s_interval_std"] = 0.0
+            else:
+                for t in ["Pass", "Carry", "Shot", "Duel"]:
+                    features[f"past_{window_sec}s_{t.lower()}_count"] = 0.0
+                features[f"past_{window_sec}s_event_count"] = 0.0
+                features[f"past_{window_sec}s_success_rate"] = 0.0
+                features[f"past_{window_sec}s_mean_end_x"] = 0.0
+                features[f"past_{window_sec}s_max_end_x"] = 0.0
+                features[f"past_{window_sec}s_interval_mean"] = 0.0
+                features[f"past_{window_sec}s_interval_std"] = 0.0
+        
+        # 최근 N개 이벤트 (기존 유지, 호환성)
+        for n in [5, 10]:
+            recent_events = events.tail(n)
+            if len(recent_events) > 0:
+                recent_types = recent_events["type_name"].value_counts()
+                for t in ["Pass", "Carry", "Shot", "Duel"]:
+                    features[f"recent_{n}_{t.lower()}_count"] = float(recent_types.get(t, 0))
+                recent_successful = (recent_events["result_name"] == "Successful").sum()
+                features[f"recent_{n}_success_rate"] = float(recent_successful / len(recent_events))
+                if recent_events["end_x"].notna().any():
+                    features[f"recent_{n}_mean_end_x"] = float(recent_events["end_x"].mean())
+                else:
+                    features[f"recent_{n}_mean_end_x"] = 0.0
+            else:
+                for t in ["Pass", "Carry", "Shot", "Duel"]:
+                    features[f"recent_{n}_{t.lower()}_count"] = 0.0
+                features[f"recent_{n}_success_rate"] = 0.0
+                features[f"recent_{n}_mean_end_x"] = 0.0
+    else:
+        # 빈 윈도우 처리
+        for window_sec in [1, 5, 10, 20]:
+            for t in ["Pass", "Carry", "Shot", "Duel"]:
+                features[f"past_{window_sec}s_{t.lower()}_count"] = 0.0
+            features[f"past_{window_sec}s_event_count"] = 0.0
+            features[f"past_{window_sec}s_success_rate"] = 0.0
+            features[f"past_{window_sec}s_mean_end_x"] = 0.0
+            features[f"past_{window_sec}s_max_end_x"] = 0.0
+            features[f"past_{window_sec}s_interval_mean"] = 0.0
+            features[f"past_{window_sec}s_interval_std"] = 0.0
+        for n in [5, 10]:
+            for t in ["Pass", "Carry", "Shot", "Duel"]:
+                features[f"recent_{n}_{t.lower()}_count"] = 0.0
+            features[f"recent_{n}_success_rate"] = 0.0
+            features[f"recent_{n}_mean_end_x"] = 0.0
+    
+    # 8. 이벤트 간격 통계 (mean/std)
+    if len(events) > 1:
+        time_diffs = events["time_seconds"].diff().dropna()
+        if len(time_diffs) > 0:
+            features["event_interval_mean"] = float(time_diffs.mean())
+            features["event_interval_std"] = float(time_diffs.std() if len(time_diffs) > 1 else 0.0)
+            features["event_interval_min"] = float(time_diffs.min())
+            features["event_interval_max"] = float(time_diffs.max())
+        else:
+            features["event_interval_mean"] = 0.0
+            features["event_interval_std"] = 0.0
+            features["event_interval_min"] = 0.0
+            features["event_interval_max"] = 0.0
+    else:
+        features["event_interval_mean"] = 0.0
+        features["event_interval_std"] = 0.0
+        features["event_interval_min"] = 0.0
+        features["event_interval_max"] = 0.0
+    
+    # 9. 최근 10초 vs 이전 10초 비교 피처 (공격 강도 변화)
+    if len(events) > 0:
+        current_time = events["time_seconds"].max()
+        recent_10s = events[events["time_seconds"] >= current_time - 10]
+        previous_10s = events[
+            (events["time_seconds"] >= current_time - 20) & 
+            (events["time_seconds"] < current_time - 10)
+        ]
+        
+        # 이벤트 수 비교
+        features["recent_10s_event_count"] = float(len(recent_10s))
+        features["previous_10s_event_count"] = float(len(previous_10s))
+        features["event_count_change"] = features["recent_10s_event_count"] - features["previous_10s_event_count"]
+        
+        # 공격 진입 비교 (x 좌표)
+        if recent_10s["end_x"].notna().any():
+            features["recent_10s_mean_end_x"] = float(recent_10s["end_x"].mean())
+        else:
+            features["recent_10s_mean_end_x"] = 0.0
+        
+        if previous_10s["end_x"].notna().any():
+            features["previous_10s_mean_end_x"] = float(previous_10s["end_x"].mean())
+        else:
+            features["previous_10s_mean_end_x"] = 0.0
+        
+        features["end_x_change"] = features["recent_10s_mean_end_x"] - features["previous_10s_mean_end_x"]
+        
+        # 성공률 비교
+        if len(recent_10s) > 0:
+            features["recent_10s_success_rate"] = float((recent_10s["result_name"] == "Successful").sum() / len(recent_10s))
+        else:
+            features["recent_10s_success_rate"] = 0.0
+        
+        if len(previous_10s) > 0:
+            features["previous_10s_success_rate"] = float((previous_10s["result_name"] == "Successful").sum() / len(previous_10s))
+        else:
+            features["previous_10s_success_rate"] = 0.0
+        
+        features["success_rate_change"] = features["recent_10s_success_rate"] - features["previous_10s_success_rate"]
+    else:
+        features["recent_10s_event_count"] = 0.0
+        features["previous_10s_event_count"] = 0.0
+        features["event_count_change"] = 0.0
+        features["recent_10s_mean_end_x"] = 0.0
+        features["previous_10s_mean_end_x"] = 0.0
+        features["end_x_change"] = 0.0
+        features["recent_10s_success_rate"] = 0.0
+        features["previous_10s_success_rate"] = 0.0
+        features["success_rate_change"] = 0.0
+    
+    # 10. 상호작용 피처 생성 (GPT 답변: 피처 쌍의 곱/비율/차이)
+    # 주요 피처 쌍의 상호작용을 반영하여 모델이 피처 간 관계를 학습할 수 있도록 함
+    if features["event_count"] > 0:
+        # 패스-성공률 상호작용
+        if features["pass_count"] > 0:
+            features["pass_success_interaction"] = features["pass_count"] * features["success_rate"]
+            features["pass_success_ratio"] = features["successful_count"] / features["pass_count"] if features["pass_count"] > 0 else 0.0
+        else:
+            features["pass_success_interaction"] = 0.0
+            features["pass_success_ratio"] = 0.0
+        
+        # 공격 진입-이벤트 밀도 상호작용
+        features["final_third_event_density"] = features["final_third_entries"] / features["event_count"] if features["event_count"] > 0 else 0.0
+        features["penalty_area_event_density"] = features["penalty_area_entries"] / features["event_count"] if features["event_count"] > 0 else 0.0
+        
+        # 전진 비율-공격 진입 상호작용
+        if features["forward_ratio"] > 0:
+            features["forward_final_third_interaction"] = features["forward_ratio"] * features["final_third_entries"]
+        else:
+            features["forward_final_third_interaction"] = 0.0
+        
+        # 이벤트 밀도-성공률 상호작용
+        features["event_rate_success_interaction"] = features["event_rate"] * features["success_rate"]
+        
+        # 침투 지표 차이 (final_third - penalty_area)
+        features["penetration_depth"] = features["final_third_entries"] - features["penalty_area_entries"]
+        
+        # 채널 분포 상호작용 (중앙 집중도)
+        features["center_attack_interaction"] = features["center_ratio"] * features["final_third_entries"]
+    else:
+        features["pass_success_interaction"] = 0.0
+        features["pass_success_ratio"] = 0.0
+        features["final_third_event_density"] = 0.0
+        features["penalty_area_event_density"] = 0.0
+        features["forward_final_third_interaction"] = 0.0
+        features["event_rate_success_interaction"] = 0.0
+        features["penetration_depth"] = 0.0
+        features["center_attack_interaction"] = 0.0
+    
     return features
 
 
 def _empty_features() -> Dict[str, float]:
     """빈 윈도우용 기본 피처"""
-    return {
+    features = {
         "event_count": 0.0,
         "time_span": 0.0,
         "event_rate": 0.0,
@@ -175,6 +370,53 @@ def _empty_features() -> Dict[str, float]:
         "penalty_area_entries": 0.0,
         "possession_changes": 0.0,
     }
+    
+    # 시퀀스 피처 다층화 (1초/5초/10초/20초 윈도우)
+    for window_sec in [1, 5, 10, 20]:
+        for t in ["pass", "carry", "shot", "duel"]:
+            features[f"past_{window_sec}s_{t}_count"] = 0.0
+        features[f"past_{window_sec}s_event_count"] = 0.0
+        features[f"past_{window_sec}s_success_rate"] = 0.0
+        features[f"past_{window_sec}s_mean_end_x"] = 0.0
+        features[f"past_{window_sec}s_max_end_x"] = 0.0
+        features[f"past_{window_sec}s_interval_mean"] = 0.0
+        features[f"past_{window_sec}s_interval_std"] = 0.0
+    
+    # 최근 N개 이벤트 (기존 호환성)
+    for n in [5, 10]:
+        for t in ["pass", "carry", "shot", "duel"]:
+            features[f"recent_{n}_{t}_count"] = 0.0
+        features[f"recent_{n}_success_rate"] = 0.0
+        features[f"recent_{n}_mean_end_x"] = 0.0
+    
+    # 이벤트 간격 통계
+    features["event_interval_mean"] = 0.0
+    features["event_interval_std"] = 0.0
+    features["event_interval_min"] = 0.0
+    features["event_interval_max"] = 0.0
+    
+    # 최근 10초 vs 이전 10초 비교
+    features["recent_10s_event_count"] = 0.0
+    features["previous_10s_event_count"] = 0.0
+    features["event_count_change"] = 0.0
+    features["recent_10s_mean_end_x"] = 0.0
+    features["previous_10s_mean_end_x"] = 0.0
+    features["end_x_change"] = 0.0
+    features["recent_10s_success_rate"] = 0.0
+    features["previous_10s_success_rate"] = 0.0
+    features["success_rate_change"] = 0.0
+    
+    # 상호작용 피처
+    features["pass_success_interaction"] = 0.0
+    features["pass_success_ratio"] = 0.0
+    features["final_third_event_density"] = 0.0
+    features["penalty_area_event_density"] = 0.0
+    features["forward_final_third_interaction"] = 0.0
+    features["event_rate_success_interaction"] = 0.0
+    features["penetration_depth"] = 0.0
+    features["center_attack_interaction"] = 0.0
+    
+    return features
 
 
 def generate_samples(
