@@ -22,8 +22,18 @@ project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
 
-def load_track2_data(csv_path: str) -> pd.DataFrame:
-    """Track2 CSV 파일 로드"""
+def load_track2_data(csv_path: str, use_pressure: bool = False) -> pd.DataFrame:
+    """Track2 CSV 파일 로드 (압박 피처 포함 옵션)"""
+    if use_pressure:
+        pressure_path = "artifacts/track2_with_pressure.parquet"
+        if os.path.exists(pressure_path):
+            print(f"Loading Track2 data with pressure features from: {pressure_path}")
+            df = pd.read_parquet(pressure_path)
+            print(f"Loaded {len(df):,} rows with pressure features")
+            return df
+        else:
+            print(f"Warning: Pressure data not found at {pressure_path}, using regular CSV")
+    
     print(f"Loading Track2 data from: {csv_path}")
     if not os.path.exists(csv_path):
         raise FileNotFoundError(f"Track2 data file not found: {csv_path}")
@@ -349,7 +359,23 @@ def extract_features(events: pd.DataFrame) -> Dict[str, float]:
         features["end_y_std"] = 0.0
         features["attack_trend"] = 0.0
     
-    # 11. 압박 프록시 피처 개선 (이벤트 로그만으로 가능한 압박 추정)
+    # 11. StatsBomb 압박 이벤트 피처 (실제 압박 데이터)
+    if "pressure_event_count" in events.columns and events["pressure_event_count"].notna().any():
+        features["statsbomb_pressure_count"] = float(events["pressure_event_count"].sum())
+        features["statsbomb_under_pressure_count"] = float(events["under_pressure_count"].sum())
+        features["statsbomb_counterpress_count"] = float(events["counterpress_count"].sum())
+        features["statsbomb_pressure_rate"] = float(events["pressure_rate"].mean()) if len(events) > 0 else 0.0
+        features["statsbomb_recent_pressure_count"] = float(events["recent_pressure_count"].sum())
+        features["statsbomb_pressure_intensity"] = float(events["pressure_intensity"].max()) if len(events) > 0 else 0.0
+    else:
+        features["statsbomb_pressure_count"] = 0.0
+        features["statsbomb_under_pressure_count"] = 0.0
+        features["statsbomb_counterpress_count"] = 0.0
+        features["statsbomb_pressure_rate"] = 0.0
+        features["statsbomb_recent_pressure_count"] = 0.0
+        features["statsbomb_pressure_intensity"] = 0.0
+    
+    # 12. 압박 프록시 피처 개선 (이벤트 로그만으로 가능한 압박 추정)
     if features["event_count"] > 0:
         # 실패 이벤트 밀도 (높을수록 압박 가능성)
         failure_rate = features["unsuccessful_count"] / features["event_count"]
@@ -389,7 +415,7 @@ def extract_features(events: pd.DataFrame) -> Dict[str, float]:
         features["pressure_proxy_failure_density"] = 0.0
         features["pressure_proxy_rapid_turnover"] = 0.0
     
-    # 12. 상호작용 피처 생성 (GPT 답변: 피처 쌍의 곱/비율/차이)
+    # 14. 상호작용 피처 생성 (GPT 답변: 피처 쌍의 곱/비율/차이)
     # 주요 피처 쌍의 상호작용을 반영하여 모델이 피처 간 관계를 학습할 수 있도록 함
     if features["event_count"] > 0:
         # 패스-성공률 상호작용
@@ -514,6 +540,22 @@ def _empty_features() -> Dict[str, float]:
     features["end_y_std"] = 0.0
     features["attack_trend"] = 0.0
     
+    # StatsBomb 압박 피처
+    features["statsbomb_pressure_count"] = 0.0
+    features["statsbomb_under_pressure_count"] = 0.0
+    features["statsbomb_counterpress_count"] = 0.0
+    features["statsbomb_pressure_rate"] = 0.0
+    features["statsbomb_recent_pressure_count"] = 0.0
+    features["statsbomb_pressure_intensity"] = 0.0
+    
+    # StatsBomb 압박 피처
+    features["statsbomb_pressure_count"] = 0.0
+    features["statsbomb_under_pressure_count"] = 0.0
+    features["statsbomb_counterpress_count"] = 0.0
+    features["statsbomb_pressure_rate"] = 0.0
+    features["statsbomb_recent_pressure_count"] = 0.0
+    features["statsbomb_pressure_intensity"] = 0.0
+    
     # 압박 프록시 피처
     features["pressure_proxy_failure_rate"] = 0.0
     features["pressure_proxy_failure_density"] = 0.0
@@ -625,6 +667,11 @@ def main():
         help="Track2 CSV 파일 경로",
     )
     parser.add_argument(
+        "--use-pressure",
+        action="store_true",
+        help="StatsBomb 압박 피처 포함 데이터 사용",
+    )
+    parser.add_argument(
         "--window-seconds",
         type=float,
         default=45.0,
@@ -652,7 +699,7 @@ def main():
     args = parser.parse_args()
     
     # 데이터 로드
-    df = load_track2_data(args.csv_path)
+    df = load_track2_data(args.csv_path, use_pressure=args.use_pressure)
     
     # 샘플 생성
     dataset_df, feature_columns = generate_samples(
