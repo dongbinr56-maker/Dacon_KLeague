@@ -300,7 +300,96 @@ def extract_features(events: pd.DataFrame) -> Dict[str, float]:
         features["previous_10s_success_rate"] = 0.0
         features["success_rate_change"] = 0.0
     
-    # 10. 상호작용 피처 생성 (GPT 답변: 피처 쌍의 곱/비율/차이)
+    # 10. 통계적 피처 (분산, 왜도, 첨도 등)
+    if len(events) > 1:
+        # x 좌표 분산 (공격 분산도)
+        if events["end_x"].notna().any():
+            end_x_values = events["end_x"].dropna()
+            if len(end_x_values) > 1:
+                features["end_x_variance"] = float(end_x_values.var())
+                features["end_x_std"] = float(end_x_values.std())
+            else:
+                features["end_x_variance"] = 0.0
+                features["end_x_std"] = 0.0
+        else:
+            features["end_x_variance"] = 0.0
+            features["end_x_std"] = 0.0
+        
+        # y 좌표 분산 (측면 분산도)
+        if events["end_y"].notna().any():
+            end_y_values = events["end_y"].dropna()
+            if len(end_y_values) > 1:
+                features["end_y_variance"] = float(end_y_values.var())
+                features["end_y_std"] = float(end_y_values.std())
+            else:
+                features["end_y_variance"] = 0.0
+                features["end_y_std"] = 0.0
+        else:
+            features["end_y_variance"] = 0.0
+            features["end_y_std"] = 0.0
+        
+        # 시간 기반 트렌드 (최근 이벤트가 더 공격적인지)
+        if len(events) >= 3:
+            sorted_events = events.sort_values("time_seconds")
+            first_third = sorted_events.iloc[:len(sorted_events)//3]
+            last_third = sorted_events.iloc[-len(sorted_events)//3:]
+            
+            if first_third["end_x"].notna().any() and last_third["end_x"].notna().any():
+                first_mean_x = float(first_third["end_x"].mean())
+                last_mean_x = float(last_third["end_x"].mean())
+                features["attack_trend"] = last_mean_x - first_mean_x
+            else:
+                features["attack_trend"] = 0.0
+        else:
+            features["attack_trend"] = 0.0
+    else:
+        features["end_x_variance"] = 0.0
+        features["end_x_std"] = 0.0
+        features["end_y_variance"] = 0.0
+        features["end_y_std"] = 0.0
+        features["attack_trend"] = 0.0
+    
+    # 11. 압박 프록시 피처 개선 (이벤트 로그만으로 가능한 압박 추정)
+    if features["event_count"] > 0:
+        # 실패 이벤트 밀도 (높을수록 압박 가능성)
+        failure_rate = features["unsuccessful_count"] / features["event_count"]
+        features["pressure_proxy_failure_rate"] = failure_rate
+        
+        # 짧은 시간 내 실패 이벤트 집중도
+        if len(events) >= 3:
+            sorted_events = events.sort_values("time_seconds")
+            time_windows = []
+            for i in range(len(sorted_events) - 2):
+                window = sorted_events.iloc[i:i+3]
+                window_time = float(window["time_seconds"].max() - window["time_seconds"].min())
+                if window_time <= 5.0:  # 5초 이내
+                    failures = (window["result_name"] == "Unsuccessful").sum()
+                    time_windows.append(failures / window_time if window_time > 0 else 0)
+            features["pressure_proxy_failure_density"] = float(max(time_windows)) if time_windows else 0.0
+        else:
+            features["pressure_proxy_failure_density"] = 0.0
+        
+        # 턴오버 직후 재턴오버 (압박 지표)
+        if "team_id" in events.columns and events["team_id"].notna().any():
+            team_changes = events[events["team_id"].diff() != 0]
+            if len(team_changes) >= 2:
+                # 턴오버 후 5초 내 재턴오버
+                turnover_after_turnover = 0
+                for i in range(len(team_changes) - 1):
+                    time_diff = float(team_changes.iloc[i+1]["time_seconds"] - team_changes.iloc[i]["time_seconds"])
+                    if time_diff <= 5.0:
+                        turnover_after_turnover += 1
+                features["pressure_proxy_rapid_turnover"] = float(turnover_after_turnover)
+            else:
+                features["pressure_proxy_rapid_turnover"] = 0.0
+        else:
+            features["pressure_proxy_rapid_turnover"] = 0.0
+    else:
+        features["pressure_proxy_failure_rate"] = 0.0
+        features["pressure_proxy_failure_density"] = 0.0
+        features["pressure_proxy_rapid_turnover"] = 0.0
+    
+    # 12. 상호작용 피처 생성 (GPT 답변: 피처 쌍의 곱/비율/차이)
     # 주요 피처 쌍의 상호작용을 반영하여 모델이 피처 간 관계를 학습할 수 있도록 함
     if features["event_count"] > 0:
         # 패스-성공률 상호작용
@@ -329,6 +418,14 @@ def extract_features(events: pd.DataFrame) -> Dict[str, float]:
         
         # 채널 분포 상호작용 (중앙 집중도)
         features["center_attack_interaction"] = features["center_ratio"] * features["final_third_entries"]
+        
+        # 압박 프록시 상호작용
+        features["pressure_attack_interaction"] = features["pressure_proxy_failure_rate"] * features["final_third_entries"]
+        features["pressure_trend_interaction"] = features["pressure_proxy_failure_density"] * features["attack_trend"]
+        
+        # 분산 기반 상호작용
+        features["variance_attack_interaction"] = features["end_x_std"] * features["final_third_entries"]
+        features["variance_trend_interaction"] = features["end_x_std"] * abs(features["attack_trend"])
     else:
         features["pass_success_interaction"] = 0.0
         features["pass_success_ratio"] = 0.0
@@ -338,6 +435,10 @@ def extract_features(events: pd.DataFrame) -> Dict[str, float]:
         features["event_rate_success_interaction"] = 0.0
         features["penetration_depth"] = 0.0
         features["center_attack_interaction"] = 0.0
+        features["pressure_attack_interaction"] = 0.0
+        features["pressure_trend_interaction"] = 0.0
+        features["variance_attack_interaction"] = 0.0
+        features["variance_trend_interaction"] = 0.0
     
     return features
 
@@ -406,6 +507,18 @@ def _empty_features() -> Dict[str, float]:
     features["previous_10s_success_rate"] = 0.0
     features["success_rate_change"] = 0.0
     
+    # 통계적 피처
+    features["end_x_variance"] = 0.0
+    features["end_x_std"] = 0.0
+    features["end_y_variance"] = 0.0
+    features["end_y_std"] = 0.0
+    features["attack_trend"] = 0.0
+    
+    # 압박 프록시 피처
+    features["pressure_proxy_failure_rate"] = 0.0
+    features["pressure_proxy_failure_density"] = 0.0
+    features["pressure_proxy_rapid_turnover"] = 0.0
+    
     # 상호작용 피처
     features["pass_success_interaction"] = 0.0
     features["pass_success_ratio"] = 0.0
@@ -415,6 +528,10 @@ def _empty_features() -> Dict[str, float]:
     features["event_rate_success_interaction"] = 0.0
     features["penetration_depth"] = 0.0
     features["center_attack_interaction"] = 0.0
+    features["pressure_attack_interaction"] = 0.0
+    features["pressure_trend_interaction"] = 0.0
+    features["variance_attack_interaction"] = 0.0
+    features["variance_trend_interaction"] = 0.0
     
     return features
 
