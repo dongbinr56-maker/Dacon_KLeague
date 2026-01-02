@@ -37,28 +37,51 @@ def validate_statsbomb(data_dir: Path) -> Dict:
     result["structure"]["events_dir"] = str(events_dir)
     result["structure"]["sample_files_count"] = len(sample_files)
     
-    # 샘플 파일 하나 읽기
+    # 샘플 파일 하나 읽기 (실제 이벤트만 필터링)
     try:
         with open(sample_files[0], "r") as f:
             sample_data = json.load(f)
         
         if isinstance(sample_data, list) and len(sample_data) > 0:
-            first_event = sample_data[0]
-            result["sample_schema"] = {
-                "keys": list(first_event.keys()),
-                "has_under_pressure": "under_pressure" in first_event,
-                "has_counterpress": "counterpress" in first_event,
-                "has_offside": any("offside" in str(k).lower() for k in first_event.keys()),
-                "event_type": first_event.get("type", {}).get("name", "unknown"),
-            }
+            # Starting XI, Half Start 등 제외하고 실제 이벤트만 필터링
+            actual_events = [
+                e for e in sample_data
+                if isinstance(e, dict) and e.get("type", {}).get("name") not in [
+                    "Starting XI", "Half Start", "Half End", "Formation Change"
+                ]
+            ]
             
-            # Track2 매핑 가능성
-            result["track2_mapping"] = {
-                "time_mapping": "timestamp" in first_event or "minute" in first_event,
-                "coordinates_mapping": "location" in first_event,
-                "event_type_mapping": "type" in first_event,
-                "team_mapping": "team" in first_event,
-            }
+            if actual_events:
+                first_event = actual_events[0]
+                result["sample_schema"] = {
+                    "keys": list(first_event.keys()),
+                    "has_under_pressure": "under_pressure" in first_event,
+                    "has_counterpress": "counterpress" in first_event,
+                    "has_offside": any("offside" in str(k).lower() for k in first_event.keys()),
+                    "event_type": first_event.get("type", {}).get("name", "unknown"),
+                    "total_events": len(sample_data),
+                    "actual_events": len(actual_events),
+                }
+                
+                # 압박 이벤트가 있는지 전체 이벤트에서 확인
+                has_pressure = any(
+                    e.get("under_pressure") is True or e.get("counterpress") is True
+                    for e in actual_events
+                )
+                result["sample_schema"]["has_pressure_in_file"] = has_pressure
+                
+                # Track2 매핑 가능성
+                result["track2_mapping"] = {
+                    "time_mapping": "timestamp" in first_event or "minute" in first_event,
+                    "coordinates_mapping": "location" in first_event,
+                    "event_type_mapping": "type" in first_event,
+                    "team_mapping": "team" in first_event,
+                }
+            else:
+                result["sample_schema"] = {
+                    "note": "No actual events found (only metadata)",
+                    "total_events": len(sample_data),
+                }
     except Exception as e:
         result["error"] = str(e)
     
