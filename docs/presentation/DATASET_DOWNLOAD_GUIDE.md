@@ -133,13 +133,39 @@ ls -la
 **데이터 용량**: 약 50GB ~ 100GB (파노라마 비디오 포함, 큰 용량, 다운로드 시 확인 필요)
 
 **다운로드 방법**:
-1. arXiv 논문 확인:
-   - URL: https://arxiv.org/pdf/2508.01802
-   - 논문에서 데이터 다운로드 링크 확인
+1. **GitHub 저장소** (권장):
+   - URL: https://github.com/open-starlab/stc-2025
+   - SoccerTrack Challenge 2025 공식 GitHub
+   - README에서 데이터셋 다운로드 링크 확인
 
-2. 데이터 구조:
-   - 전 경기 파노라마 비디오
-   - 프레임별 2D 피치 좌표/역할/팀 라벨
+2. **공식 웹사이트**:
+   - URL: https://sites.google.com/g.sp.m.is.nagoya-u.ac.jp/stc2025
+   - "The Dataset for this challenge are SoccerTrack v2 datasets (you can download from here)"
+   - 웹사이트에서 다운로드 링크 제공
+
+3. **CodaLab 페이지**:
+   - URL: https://codalab.lisn.upsaclay.fr/competitions/22532
+   - 경쟁 참가자용 데이터셋 다운로드 가능
+
+4. **논문**:
+   - arXiv: https://arxiv.org/abs/2508.01802
+   - 논문에서 데이터셋 정보 확인
+
+**데이터 구조**:
+- 전 경기 파노라마 비디오 (.mp4)
+- 프레임별 2D 피치 좌표/역할/팀 라벨
+- Bounding boxes (training set only, MOT format)
+- 10개 경기, 고정 시점 비디오
+
+**인용**:
+```bibtex
+@article{scott2025soccertrackv2,
+  title={SoccerTrack v2: A Full-Pitch Multi-View Soccer Dataset for Game State Reconstruction}, 
+  author={Atom Scott and Ikuma Uchida and Kento Kuroda and Yufi Kim and Keisuke Fujii},
+  journal = {2508.01802},
+  year    = {2025}
+}
+```
 
 **저장 위치 권장**: `00_data/SoccerTrack/`
 
